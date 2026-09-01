@@ -15,6 +15,7 @@ import {
     Plus,
     Printer,
     Save,
+    ScanBarcode,
     Settings,
     SquarePen,
     Trash2,
@@ -42,6 +43,7 @@ const lucideIcons = {
     Plus,
     Printer,
     Save,
+    ScanBarcode,
     Settings,
     SquarePen,
     Trash2,
@@ -51,14 +53,19 @@ const lucideIcons = {
 };
 
 function renderIcons(root = document) {
-    createIcons({
-        attrs: {
-            'aria-hidden': 'true',
-            'stroke-width': 2,
-        },
-        icons: lucideIcons,
-        nameAttr: 'data-lucide',
-    });
+    try {
+        createIcons({
+            attrs: {
+                'aria-hidden': 'true',
+                'stroke-width': 2,
+            },
+            icons: lucideIcons,
+            nameAttr: 'data-lucide',
+            root,
+        });
+    } catch (error) {
+        console.warn('Lucide icons could not be rendered.', error);
+    }
 }
 
 if (defaults) {
@@ -75,6 +82,8 @@ if (defaults) {
     const form = document.getElementById('upload-form');
     const fileInput = document.getElementById('excel_file');
     const dropzone = document.getElementById('dropzone');
+    const chooseFileButton = document.getElementById('choose-file-button');
+    const changeFileButton = document.getElementById('change-file-button');
     const fileName = document.getElementById('file-name');
     const submitButton = document.getElementById('submit-button');
     const submitLabel = document.getElementById('submit-label');
@@ -105,6 +114,15 @@ if (defaults) {
     let designerDraft = customElements.map((element) => ({ ...element }));
     let selectedId = null;
     let ignoreFieldChanges = false;
+    let previewFrame = null;
+
+    function cssEscape(value) {
+        if (window.CSS && typeof window.CSS.escape === 'function') {
+            return window.CSS.escape(value);
+        }
+
+        return value.replace(/["\\]/g, '\\$&');
+    }
 
     const moveable = new Moveable(designerWorkspace, {
         target: null,
@@ -355,12 +373,30 @@ if (defaults) {
     }
 
     function renderPreview() {
+        if (!previewBoard || previewBoard.clientWidth <= 0) {
+            schedulePreviewRender();
+            return;
+        }
+
         previewBoard.replaceChildren(renderGuides(previewBoard));
         currentElements().forEach((element) => {
             previewBoard.appendChild(barcodeNode(element, previewBoard));
         });
 
         previewMode.textContent = mode === 'quick' ? 'Disposition rapide' : 'Disposition personnalisee';
+    }
+
+    function schedulePreviewRender() {
+        if (previewFrame !== null) {
+            cancelAnimationFrame(previewFrame);
+        }
+
+        previewFrame = requestAnimationFrame(() => {
+            previewFrame = null;
+            if (previewBoard && previewBoard.clientWidth > 0) {
+                renderPreview();
+            }
+        });
     }
 
     function renderDesigner() {
@@ -383,7 +419,7 @@ if (defaults) {
     }
 
     function refreshMoveable() {
-        const target = selectedId ? designerBoard.querySelector(`[data-id="${CSS.escape(selectedId)}"]`) : null;
+        const target = selectedId ? designerBoard.querySelector(`[data-id="${cssEscape(selectedId)}"]`) : null;
         moveable.target = target;
         moveable.snapContainer = designerBoard;
         moveable.container = designerWorkspace;
@@ -592,7 +628,7 @@ if (defaults) {
             layoutError.textContent = '';
             submitButton.disabled = false;
             syncHidden();
-            renderPreview();
+            schedulePreviewRender();
         } catch (error) {
             layoutError.textContent = error.message;
             submitButton.disabled = true;
@@ -711,6 +747,19 @@ if (defaults) {
         button.addEventListener('click', closeDesignerModal);
     });
 
+    function openFilePicker() {
+        fileInput.click();
+    }
+
+    function openFilePickerFromKeyboard(event) {
+        if (event.key !== 'Enter' && event.key !== ' ') {
+            return;
+        }
+
+        event.preventDefault();
+        openFilePicker();
+    }
+
     function showSelectedFile() {
         const file = fileInput.files && fileInput.files[0];
         dropzone.classList.toggle('has-file', Boolean(file));
@@ -719,6 +768,16 @@ if (defaults) {
     }
 
     fileInput.addEventListener('change', showSelectedFile);
+    chooseFileButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        openFilePicker();
+    });
+    changeFileButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        openFilePicker();
+    });
+    chooseFileButton.addEventListener('keydown', openFilePickerFromKeyboard);
+    changeFileButton.addEventListener('keydown', openFilePickerFromKeyboard);
 
     ['dragenter', 'dragover'].forEach((eventName) => {
         dropzone.addEventListener(eventName, (event) => {
@@ -760,8 +819,12 @@ if (defaults) {
     applyLayout();
     renderIcons();
 
+    if ('ResizeObserver' in window) {
+        new ResizeObserver(schedulePreviewRender).observe(previewBoard);
+    }
+
     window.addEventListener('resize', () => {
-        renderPreview();
+        schedulePreviewRender();
         if (designerModal.classList.contains('is-open')) {
             renderDesigner();
         }

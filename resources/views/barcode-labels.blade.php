@@ -807,7 +807,7 @@
                                     <i data-lucide="FileSpreadsheet"></i>
                                 </span>
                                 <span class="drop-title">Glissez-deposez votre fichier</span>
-                                <span class="secondary-button">
+                                <span id="choose-file-button" class="secondary-button" role="button" tabindex="0" aria-label="Choisir un fichier Excel">
                                     <i data-lucide="Upload"></i>
                                     Choisir un fichier
                                 </span>
@@ -816,7 +816,7 @@
                             <span class="selected-state">
                                 <span id="file-name" class="file-name"></span>
                                 <span class="ready">Fichier pret</span>
-                                <span class="secondary-button">Modifier</span>
+                                <span id="change-file-button" class="secondary-button" role="button" tabindex="0" aria-label="Modifier le fichier Excel">Modifier</span>
                             </span>
                         </label>
 
