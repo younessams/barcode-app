@@ -1,0 +1,99 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Services\BarcodeLabels\A4LabelLayout;
+use App\Services\BarcodeLabels\BarcodeLabelPdf;
+use App\Services\BarcodeLabels\ExcelLabelParseException;
+use App\Services\BarcodeLabels\ExcelLabelParser;
+use App\Services\BarcodeLabels\LabelLayoutException;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Str;
+
+final class BarcodeLabelController extends Controller
+{
+    public function index()
+    {
+        return view('barcode-labels', [
+            'aliases' => ExcelLabelParser::supportedAliases(),
+            'labelWidth' => BarcodeLabelPdf::LABEL_WIDTH_MM,
+            'labelHeight' => BarcodeLabelPdf::LABEL_HEIGHT_MM,
+            'defaultLayout' => (new A4LabelLayout)->default(),
+        ]);
+    }
+
+    public function generate(Request $request, ExcelLabelParser $parser, BarcodeLabelPdf $pdf, A4LabelLayout $layoutService): RedirectResponse
+    {
+        $this->cleanupOldGeneratedPdfs();
+
+        $validated = $request->validate([
+            'excel_file' => ['required', 'file', 'max:10240', 'mimes:xlsx,xls', 'mimetypes:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/octet-stream,application/zip'],
+            'excel_column' => ['required', 'string', 'max:120'],
+            'layout_json' => ['required', 'string'],
+        ]);
+
+        $file = $validated['excel_file'];
+        $path = $file->getRealPath();
+
+        if (! is_string($path) || $path === '') {
+            return back()->withErrors(['excel_file' => 'Le fichier envoye ne peut pas etre traite.']);
+        }
+
+        try {
+            $layout = $layoutService->normalize($validated['layout_json']);
+        } catch (LabelLayoutException $exception) {
+            return back()->withErrors(['layout_json' => $exception->getMessage()])->withInput();
+        }
+
+        try {
+            $labels = $parser->parse($path, $validated['excel_column']);
+        } catch (ExcelLabelParseException $exception) {
+            return back()->withErrors(['excel_file' => $exception->getMessage()])->withInput();
+        }
+
+        $content = $pdf->render($labels, $layout);
+        $pages = $pdf->pageCount(count($labels), $layout);
+        $token = Str::random(40);
+        $directory = storage_path('app/generated-labels');
+        File::ensureDirectoryExists($directory);
+        File::put($directory.DIRECTORY_SEPARATOR.$token.'.pdf', $content);
+
+        return redirect()->route('labels.index')->with('result', [
+            'token' => $token,
+            'labels' => count($labels),
+            'pages' => $pages,
+        ]);
+    }
+
+    public function pdf(string $token, Request $request): Response
+    {
+        abort_unless(preg_match('/^[A-Za-z0-9]{40}$/', $token) === 1, 404);
+
+        $path = storage_path('app/generated-labels'.DIRECTORY_SEPARATOR.$token.'.pdf');
+        abort_unless(File::exists($path), 404);
+
+        $disposition = $request->boolean('download') ? 'attachment' : 'inline';
+
+        return response(File::get($path), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => $disposition.'; filename="code-128-labels.pdf"',
+        ]);
+    }
+
+    private function cleanupOldGeneratedPdfs(): void
+    {
+        $directory = storage_path('app/generated-labels');
+        if (! File::isDirectory($directory)) {
+            return;
+        }
+
+        foreach (File::files($directory) as $file) {
+            if ($file->getMTime() < now()->subHours(6)->getTimestamp()) {
+                File::delete($file->getPathname());
+            }
+        }
+    }
+}
