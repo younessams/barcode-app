@@ -1,102 +1,124 @@
 # Android + Termux
 
-This guide runs the existing Laravel barcode application locally on the phone. The phone does not need the PC after the project has been copied and its Composer dependencies have been installed.
+This runs the existing Laravel barcode application locally on an Android phone. The phone does not need the PC after setup. The approved barcode geometry, PDF pipeline, Excel parsing, and desktop behavior are unchanged.
 
-## 1. Install Termux
+## QUICK INSTALL FOR COWORKERS
 
-Install Termux from [F-Droid](https://f-droid.org/packages/com.termux/) or the official [Termux GitHub releases](https://github.com/termux/termux-app/releases). Do not combine installations from different sources because their update signatures differ.
+### 1. Install Termux
 
-## 2. First-time setup
+The tested Play Store Termux installation is acceptable. Install Termux from the [Google Play listing](https://play.google.com/store/apps/details?id=com.termux). Do not combine installations from different sources on the same phone.
 
-Open Termux and run:
+### 2. Paste this one setup block
+
+Open Termux and paste the whole block:
 
 ```sh
-pkg update && pkg upgrade
-pkg install php php-gd composer unzip
+pkg update -y
+pkg install -y git php php-gd composer unzip nodejs-lts
 termux-setup-storage
+
+if [ -e "$HOME/barcode-app" ]; then
+    cd "$HOME/barcode-app"
+else
+    cd "$HOME"
+    git clone https://github.com/younessams/barcode-app.git barcode-app
+    cd "$HOME/barcode-app"
+fi
+
+bash scripts/setup-android.sh
 ```
 
-Allow the Android storage permission when prompted. Install `git` only if you plan to transfer or update the project with Git:
+The setup checks that it is running inside Termux, verifies PHP GD, installs the locked Composer dependencies, builds the frontend assets, creates `.env` only when missing, generates its key only once, and creates the global `start-app` command.
+
+### 3. Daily use
 
 ```sh
-pkg install git
+start-app
 ```
 
-The current Termux package names are `php`, `php-gd`, `composer`, and `unzip`. The `php` package supplies the PHP runtime and its bundled extensions; `php-gd` supplies the GD extension required by PhpSpreadsheet. Verify the actual phone installation before installing the project:
+Open this URL in the Android browser:
+
+```text
+http://127.0.0.1:8000
+```
+
+Use the browser file picker to choose an `.xls` or `.xlsx` file from `Downloads` or another Android storage location. Generate the PDF and use the result's download/open action. PDFs normally appear in the browser's `Download` folder. Press `Ctrl+C` in Termux to stop the server.
+
+## Already installed
+
+If `~/barcode-app` already exists, do not clone into it and do not create `~/barcode-app/barcode-app`. Confirm the existing copy, then run:
 
 ```sh
-php -v
-php -m
+cd "$HOME/barcode-app"
+bash scripts/setup-android.sh
 ```
 
-The project requires PHP `>=8.2`. Laravel 12 needs ctype, curl, DOM, fileinfo, filter, hash, mbstring, OpenSSL, PCRE, PDO, session, tokenizer, and XML support. PhpSpreadsheet additionally requires GD, iconv, libxml, SimpleXML, XMLReader, XMLWriter, ZIP, and zlib. TCPDF requires cURL. Termux's PHP package provides the PHP extensions; Composer will verify the platform after installation.
+The setup script is safe to rerun. It does not delete directories, overwrite an existing `.env`, or regenerate an existing `APP_KEY`. If the existing copy predates the Android setup files, copy the current project into `~/barcode-app` or use a separate clean directory and then run the script there.
 
-## 3. Copy the project
+## What the setup installs
 
-On the PC, make a copy of the project for transfer. Keep `public/build`, `composer.json`, and `composer.lock`. Do not transfer the PC `.env`.
+The exact Termux packages used by the tested setup are:
 
-The runnable copy should live inside Termux home, where it is writable and does not depend on Android shared-storage permissions:
+- `php` (PHP CLI and the PHP extensions supplied by the Termux package)
+- `php-gd` (GD required by PhpSpreadsheet)
+- `composer`
+- `unzip`
+- `nodejs-lts` (needed once for `npm ci` and `npm run build`)
+- `git` (used by the coworker clone block)
+
+The project requires PHP `>=8.2`. PhpSpreadsheet also requires GD, XML-related extensions, ZIP, zlib, iconv, and file handling support. TCPDF requires cURL. The setup runs `composer check-platform-reqs --no-dev` and stops if the phone does not satisfy the locked dependencies.
+
+## Manual or troubleshooting steps
+
+Keep the runnable project inside Termux home:
 
 ```sh
-mkdir -p ~/barcode-app
-cp -r ~/storage/downloads/barcode-app/. ~/barcode-app/
-cd ~/barcode-app
+~/barcode-app
 ```
 
-The `~/storage/downloads` path is available after `termux-setup-storage`. Adjust the source path if the copied folder is elsewhere in shared storage.
+Use shared storage only for transfer and user files. `termux-setup-storage` creates paths such as `~/storage/downloads`; it does not move the runnable project there.
 
-Do not run the application directly from `~/storage/shared`; use shared storage for transferring Excel files and receiving PDFs, and keep the runnable project at `~/barcode-app`.
+The setup creates `php-termux.ini` with the tested Android PHP configuration:
 
-## 4. Install PHP dependencies
+```ini
+[PHP]
+opcache.enable=0
+opcache.enable_cli=0
+opcache.file_cache_fallback=1
+sys_temp_dir=/data/data/com.termux/files/usr/tmp
+```
 
-Run Composer once inside Termux. This creates an Android-compatible `vendor` directory from the lock file:
+Android startup intentionally uses the direct PHP built-in server with Laravel's router. It does not use `php artisan serve`:
 
 ```sh
-cd ~/barcode-app
-composer install --no-dev --prefer-dist --optimize-autoloader
-composer check-platform-reqs --no-dev
+cd ~/barcode-app/public
+php -c ../php-termux.ini \
+  -S 127.0.0.1:8000 \
+  ../vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php
 ```
 
-Do not copy the Windows `vendor` directory and do not use `--ignore-platform-reqs`. Node/npm is not required on the phone because the built files in `public/build` are already part of the transfer.
-
-## 5. Configure the local environment
-
-Create the Android `.env` and generate a phone-local application key:
+If a required command is missing, install the packages again with:
 
 ```sh
-cd ~/barcode-app
-cp .env.android.example .env
-php artisan key:generate
+pkg install -y git php php-gd composer unzip nodejs-lts
 ```
 
-The Android example uses file sessions, file cache, synchronous queues, and local storage. No database is required by the barcode workflow. Never copy or commit a real `APP_KEY`.
+Do not use `--ignore-platform-reqs`, do not copy the Windows `vendor` directory, and do not copy the PC `.env`. `public/build` is generated during setup and is used by the browser at runtime.
 
-## 6. Daily use
+## Transfer contents
 
-Start the application:
+The clean phone copy needs the application source, `composer.json`, `composer.lock`, `package.json`, and `package-lock.json`. The setup block builds `public/build` itself, so Node/npm is only needed during setup, not for daily use.
 
-```sh
-cd ~/barcode-app
-bash scripts/start-android.sh
-```
+Do not transfer these items unless specifically needed:
 
-Open the Android browser at [http://127.0.0.1:8000](http://127.0.0.1:8000). Use the browser's file picker to select an `.xls` or `.xlsx` file from Android storage, such as `Downloads`. Generate the PDF normally, then use the result's download/open action. Android browsers normally save downloaded PDFs in the device's `Download` folder.
-
-Stop the server with `Ctrl-C` in the Termux session. The script checks PHP, Composer's autoloader, `.env`, and Laravel's writable directories before starting; it does not install packages automatically or clear application data.
-
-## 7. What to transfer
-
-Required: application source, `composer.json`, `composer.lock`, and the pre-built `public/build` directory.
-
-Not required for the phone copy:
-
-- `node_modules`
 - `.git`
-- `tests` (unless you want to run the test suite on the phone)
-- local logs, cache files, and generated PDFs under `storage`
-- Docker, Render, and other deployment files when this is only a local Android copy
+- `node_modules`
+- the PC `.env`
+- tests
+- local logs, cache files, or generated PDFs under `storage`
+- Docker, Render, and other deployment files
 
-Do not delete those items from the desktop project just to prepare the copy. They are only omitted from the transfer copy.
+Do not delete those items from the desktop project to make a transfer copy smaller.
 
 ## Sources
 
