@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\BarcodeLabels\A4LabelLayout;
+use App\Services\BarcodeLabels\A4LabelPresetCatalog;
 use App\Services\BarcodeLabels\BarcodeLabelPdf;
 use App\Services\BarcodeLabels\ExcelLabelParseException;
 use App\Services\BarcodeLabels\ExcelLabelParser;
-use App\Services\BarcodeLabels\LabelLayoutException;
+use App\Services\BarcodeLabels\LabelPresetException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -18,21 +18,36 @@ final class BarcodeLabelController extends Controller
     public function index()
     {
         return view('barcode-labels', [
-            'aliases' => ExcelLabelParser::supportedAliases(),
-            'labelWidth' => BarcodeLabelPdf::LABEL_WIDTH_MM,
-            'labelHeight' => BarcodeLabelPdf::LABEL_HEIGHT_MM,
-            'defaultLayout' => (new A4LabelLayout)->default(),
+            'presets' => (new A4LabelPresetCatalog)->all(),
         ]);
     }
 
-    public function generate(Request $request, ExcelLabelParser $parser, BarcodeLabelPdf $pdf, A4LabelLayout $layoutService): RedirectResponse
+    public function headers(Request $request, ExcelLabelParser $parser)
+    {
+        $validated = $request->validate([
+            'excel_file' => ['required', 'file', 'max:10240', 'mimes:xlsx,xls', 'mimetypes:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/octet-stream,application/zip'],
+        ]);
+        $path = $validated['excel_file']->getRealPath();
+
+        if (! is_string($path) || $path === '') {
+            return response()->json(['message' => 'Le fichier envoye ne peut pas etre traite.'], 422);
+        }
+
+        try {
+            return response()->json(['headers' => $parser->headers($path)]);
+        } catch (ExcelLabelParseException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+    }
+
+    public function generate(Request $request, ExcelLabelParser $parser, BarcodeLabelPdf $pdf, A4LabelPresetCatalog $catalog): RedirectResponse
     {
         $this->cleanupOldGeneratedPdfs();
 
         $validated = $request->validate([
             'excel_file' => ['required', 'file', 'max:10240', 'mimes:xlsx,xls', 'mimetypes:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/octet-stream,application/zip'],
             'excel_column' => ['required', 'string', 'max:120'],
-            'layout_json' => ['required', 'string'],
+            'preset_id' => ['required', 'string', 'in:'.implode(',', $catalog->ids())],
         ]);
 
         $file = $validated['excel_file'];
@@ -42,15 +57,14 @@ final class BarcodeLabelController extends Controller
             return back()->withErrors(['excel_file' => 'Le fichier envoye ne peut pas etre traite.']);
         }
 
-        try {
-            $layout = $layoutService->normalize($validated['layout_json']);
-        } catch (LabelLayoutException $exception) {
-            return back()->withErrors(['layout_json' => $exception->getMessage()])->withInput();
+        if ($request->has('layout_json')) {
+            return back()->withErrors(['preset_id' => 'Les mises en page personnalisees ne sont plus disponibles.'])->withInput();
         }
 
         try {
+            $layout = $catalog->layout($validated['preset_id']);
             $labels = $parser->parse($path, $validated['excel_column']);
-        } catch (ExcelLabelParseException $exception) {
+        } catch (ExcelLabelParseException|LabelPresetException $exception) {
             return back()->withErrors(['excel_file' => $exception->getMessage()])->withInput();
         }
 

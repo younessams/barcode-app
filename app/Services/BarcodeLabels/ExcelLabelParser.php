@@ -16,7 +16,7 @@ final class ExcelLabelParser
      */
     public function parse(string $path, string $columnName = self::DEFAULT_COLUMN_NAME): array
     {
-        $columnName = trim($columnName);
+        $columnName = self::normalizeHeader($columnName);
         if ($columnName === '') {
             throw new ExcelLabelParseException('Le nom de la colonne Excel est obligatoire.');
         }
@@ -40,7 +40,7 @@ final class ExcelLabelParser
 
             $headers = [];
             for ($column = 1; $column <= $highestColumnIndex; $column++) {
-                $headers[$column] = trim($this->cellString($sheet->getCell([$column, 1])));
+                $headers[$column] = $this->cellString($sheet->getCell([$column, 1]));
             }
 
             $codeColumn = $this->detectCodeColumn($headers, $columnName);
@@ -56,6 +56,10 @@ final class ExcelLabelParser
                     continue;
                 }
 
+                if (preg_match('/^[\x20-\x7E]+$/D', $code) !== 1) {
+                    throw new ExcelLabelParseException('La ligne Excel '.$row.' contient une valeur incompatible avec Code 128 : "'.mb_substr($code, 0, 80).'".');
+                }
+
                 $labels[] = new BarcodeLabel($code);
             }
 
@@ -69,11 +73,32 @@ final class ExcelLabelParser
         }
     }
 
-    public static function supportedAliases(): array
+    /** @return list<string> */
+    public function headers(string $path): array
     {
-        return [
-            'code article' => [self::DEFAULT_COLUMN_NAME],
-        ];
+        try {
+            $reader = IOFactory::createReaderForFile($path);
+            $reader->setReadDataOnly(false);
+            $spreadsheet = $reader->load($path);
+        } catch (\Throwable) {
+            throw new ExcelLabelParseException('Le fichier envoye ne peut pas etre lu comme un classeur Excel.');
+        }
+
+        try {
+            $sheet = $spreadsheet->getActiveSheet();
+            $highestColumnIndex = Coordinate::columnIndexFromString($sheet->getHighestDataColumn());
+            $headers = [];
+            for ($column = 1; $column <= $highestColumnIndex; $column++) {
+                $header = $this->cellString($sheet->getCell([$column, 1]));
+                if ($header !== '') {
+                    $headers[] = $header;
+                }
+            }
+
+            return $headers;
+        } finally {
+            $spreadsheet->disconnectWorksheets();
+        }
     }
 
     /**
@@ -115,6 +140,8 @@ final class ExcelLabelParser
 
     private static function normalizeHeader(string $header): string
     {
+        $header = preg_replace('/[\p{Z}\s]+/u', ' ', $header) ?? $header;
+
         return mb_strtolower(trim($header));
     }
 

@@ -33,6 +33,41 @@ final class ExcelLabelParserTest extends TestCase
         $this->assertSame('001-ABC', $labels[0]->code);
     }
 
+    public function test_generic_identifier_columns_are_supported(): void
+    {
+        foreach (['SKU', 'Tracking', 'Serial Number'] as $column) {
+            $labels = (new ExcelLabelParser)->parse($this->createWorkbook([
+                ['Code Article', $column],
+                ['WRONG', '0007-AB'],
+                ['WRONG-2', '0008-AB'],
+            ]), $column);
+
+            $this->assertSame(['0007-AB', '0008-AB'], array_map(fn ($label) => $label->code, $labels));
+        }
+    }
+
+    public function test_header_whitespace_is_normalized_without_fuzzy_matching(): void
+    {
+        $labels = (new ExcelLabelParser)->parse($this->createWorkbook([
+            ["Code\u{00A0}  Article"],
+            ['0007'],
+        ]), ' code article ');
+
+        $this->assertSame('0007', $labels[0]->code);
+    }
+
+    public function test_unsupported_code_value_reports_row_and_value(): void
+    {
+        $this->expectException(ExcelLabelParseException::class);
+        $this->expectExceptionMessage('ligne Excel 2');
+        $this->expectExceptionMessage('é');
+
+        (new ExcelLabelParser)->parse($this->createWorkbook([
+            ['SKU'],
+            ['Café'],
+        ]), 'SKU');
+    }
+
     public function test_other_code_like_headers_are_not_guessed(): void
     {
         $this->expectException(ExcelLabelParseException::class);
