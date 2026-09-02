@@ -122,7 +122,7 @@ final class BarcodeLabelPdf
         $textWidth = min(self::PAGE_WIDTH_MM - $textX, $element['widthMm'] + 8.5);
         $codeY = $element['yMm'] + $element['heightMm'] + A4LabelLayout::CODE_TEXT_GAP_MM;
 
-        $pdf->SetFont('helvetica', 'B', 8.5);
+        $pdf->SetFont('helvetica', 'B', 7.8);
         $pdf->SetTextColor(0, 0, 0);
         $pdf->SetXY($textX, $codeY);
         $pdf->Cell($textWidth, A4LabelLayout::CODE_TEXT_HEIGHT_MM, $this->truncate($label->code, 34), 0, 0, 'C', false, '', 0, false, 'T', 'M');

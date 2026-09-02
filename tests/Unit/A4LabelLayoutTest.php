@@ -20,10 +20,10 @@ final class A4LabelLayoutTest extends TestCase
         $this->assertSame(24, $layout['guides']['slotsPerPage']);
         $this->assertEqualsWithDelta(70.0, $layout['guides']['labelWidthMm'], 0.0001);
         $this->assertEqualsWithDelta(37.125, $layout['guides']['labelHeightMm'], 0.0001);
-        $this->assertEqualsWithDelta(5.75, $first['xMm'], 0.0001);
-        $this->assertEqualsWithDelta(2.0, $first['yMm'], 0.0001);
-        $this->assertEqualsWithDelta(58.5, $first['widthMm'], 0.0001);
-        $this->assertEqualsWithDelta(28.4, $first['heightMm'], 0.0001);
+        $this->assertEqualsWithDelta(6.75, $first['xMm'], 0.0001);
+        $this->assertEqualsWithDelta(1.0, $first['yMm'], 0.0001);
+        $this->assertEqualsWithDelta(56.5, $first['widthMm'], 0.0001);
+        $this->assertEqualsWithDelta(27.2, $first['heightMm'], 0.0001);
     }
 
     public function test_gaps_and_margins_change_the_calculated_label_zone(): void
@@ -42,8 +42,8 @@ final class A4LabelLayoutTest extends TestCase
         $this->assertSame(10, $layout['guides']['slotsPerPage']);
         $this->assertEqualsWithDelta(96.0, $layout['guides']['labelWidthMm'], 0.0001);
         $this->assertEqualsWithDelta(55.4, $layout['guides']['labelHeightMm'], 0.0001);
-        $this->assertEqualsWithDelta(13.75, $layout['elements'][0]['xMm'], 0.0001);
-        $this->assertEqualsWithDelta(7.0, $layout['elements'][0]['yMm'], 0.0001);
+        $this->assertEqualsWithDelta(14.75, $layout['elements'][0]['xMm'], 0.0001);
+        $this->assertEqualsWithDelta(6.0, $layout['elements'][0]['yMm'], 0.0001);
     }
 
     public function test_impossible_quick_layout_is_rejected(): void

@@ -73,11 +73,11 @@ if (defaults) {
     const pageHeight = 297;
     const minBarcodeWidth = 40;
     const minBarcodeHeight = 18;
-    const textGap = 0.4;
+    const textGap = 0.25;
     const textHeight = 4.6;
-    const barcodeOffsetX = 5.75;
-    const barcodeOffsetY = 2;
-    const bottomSafe = 2.125;
+    const barcodeOffsetX = 6.75;
+    const barcodeOffsetY = 1;
+    const bottomSafe = 4.325;
 
     const form = document.getElementById('upload-form');
     const fileInput = document.getElementById('excel_file');

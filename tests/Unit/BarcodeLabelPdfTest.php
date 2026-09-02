@@ -116,8 +116,8 @@ final class BarcodeLabelPdfTest extends TestCase
             'mode' => 'custom',
             'guides' => ['columns' => 3, 'rows' => 8],
             'elements' => [
-                ['id' => 'one', 'type' => 'barcode', 'xMm' => 5.75, 'yMm' => 2, 'widthMm' => 58.5, 'heightMm' => 28.4],
-                ['id' => 'two', 'type' => 'barcode', 'xMm' => 75.75, 'yMm' => 2, 'widthMm' => 58.5, 'heightMm' => 28.4],
+                ['id' => 'one', 'type' => 'barcode', 'xMm' => 6.75, 'yMm' => 2, 'widthMm' => 56.5, 'heightMm' => 27.2],
+                ['id' => 'two', 'type' => 'barcode', 'xMm' => 76.75, 'yMm' => 2, 'widthMm' => 56.5, 'heightMm' => 27.2],
             ],
         ]);
 

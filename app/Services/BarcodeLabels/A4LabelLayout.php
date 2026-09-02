@@ -24,15 +24,15 @@ final class A4LabelLayout
 
     public const DEFAULT_MARGIN_LEFT_MM = 0.0;
 
-    public const DEFAULT_BARCODE_OFFSET_X_MM = 5.75;
+    public const DEFAULT_BARCODE_OFFSET_X_MM = 6.75;
 
-    public const DEFAULT_BARCODE_OFFSET_Y_MM = 2.0;
+    public const DEFAULT_BARCODE_OFFSET_Y_MM = 1.0;
 
-    public const DEFAULT_BARCODE_WIDTH_MM = 58.5;
+    public const DEFAULT_BARCODE_WIDTH_MM = 56.5;
 
-    public const DEFAULT_BARCODE_HEIGHT_MM = 28.4;
+    public const DEFAULT_BARCODE_HEIGHT_MM = 27.2;
 
-    public const CODE_TEXT_GAP_MM = 0.4;
+    public const CODE_TEXT_GAP_MM = 0.25;
 
     public const CODE_TEXT_HEIGHT_MM = 4.6;
 
@@ -40,7 +40,7 @@ final class A4LabelLayout
 
     public const MIN_BARCODE_HEIGHT_MM = 18.0;
 
-    private const DEFAULT_BOTTOM_SAFE_MM = 2.125;
+    private const DEFAULT_BOTTOM_SAFE_MM = 4.325;
 
     private const MAX_COLUMNS = 50;
 
