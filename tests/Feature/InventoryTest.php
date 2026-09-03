@@ -76,12 +76,17 @@ final class InventoryTest extends TestCase
     {
         $session = InventorySession::create(['name' => 'Camera test']);
 
-        $this->get(route('inventories.show', $session->uuid))
+        $response = $this->get(route('inventories.show', $session->uuid))
             ->assertOk()
             ->assertSee('Demarrer la camera')
             ->assertSee('Saisir le code article manuellement')
             ->assertSee("Cloturer l'inventaire", false)
             ->assertSee(route('inventories.items.store', $session->uuid));
+
+        $html = $response->getContent();
+        $this->assertSame(2, substr_count($html, 'data-detected-step'));
+        $this->assertStringNotContainsString('data-quantity-step', $html);
+        $this->assertStringNotContainsString('detectedQuantity.focus()', file_get_contents(resource_path('js/inventory.js')));
 
         $this->get(route('inventories.index'))
             ->assertOk()

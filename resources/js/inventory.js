@@ -5,7 +5,6 @@ const app = document.querySelector('.app');
 const video = document.querySelector('#camera-video');
 const form = document.querySelector('#item-form');
 const codeInput = document.querySelector('#code_article');
-const quantityInput = document.querySelector('#quantity');
 const detectedPanel = document.querySelector('#detected-panel');
 const detectedCode = document.querySelector('#detected-code');
 const detectedQuantity = document.querySelector('#detected-quantity');
@@ -80,7 +79,6 @@ function showDetected(code) {
     detectedPanel.hidden = false;
     manualEntry.hidden = true;
     manualToggle.setAttribute('aria-expanded', 'false');
-    detectedQuantity.focus();
     setCameraStatus('Code detecte. Saisissez la quantite.');
 }
 
@@ -199,7 +197,6 @@ async function saveItem(code, quantity, mode = null) {
         updateSummary(payload);
         setMessage('Article enregistre.');
         if (form) form.reset();
-        if (quantityInput) quantityInput.value = '1';
         resumeScanning();
     } catch (error) {
         scannerState = DETECTED;
@@ -220,9 +217,12 @@ if (retryButton) retryButton.addEventListener('click', startCamera);
 if (manualToggle) manualToggle.addEventListener('click', toggleManual);
 if (document.querySelector('#save-detected')) document.querySelector('#save-detected').addEventListener('click', () => saveItem(pendingCode, detectedQuantity.value));
 if (document.querySelector('#cancel-detected')) document.querySelector('#cancel-detected').addEventListener('click', resumeScanning);
-if (form) form.addEventListener('submit', (event) => { event.preventDefault(); saveItem(codeInput.value.trim(), quantityInput.value); });
+if (form) form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const code = codeInput.value.trim();
+    if (code) showDetected(code);
+});
 
-document.querySelectorAll('[data-quantity-step]').forEach((button) => button.addEventListener('click', () => adjustQuantity(quantityInput, Number(button.dataset.quantityStep))));
 document.querySelectorAll('[data-detected-step]').forEach((button) => button.addEventListener('click', () => adjustQuantity(detectedQuantity, Number(button.dataset.detectedStep))));
 
 const search = document.querySelector('#search');

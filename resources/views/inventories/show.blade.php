@@ -39,8 +39,10 @@
         .detected-code { overflow-wrap: anywhere; font-size: clamp(20px, 5vw, 28px); line-height: 1.15; }
         .quantity-label { display: block; font-weight: 700; margin-bottom: 6px; }
         input { width: 100%; padding: 12px; border: 1px solid #b8c2cc; border-radius: 6px; font: inherit; }
-        #quantity, #detected-quantity { font-size: 16px; max-width: 180px; }
+        #detected-quantity { font-size: 16px; max-width: 180px; }
         .detected-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+        .manual-code-row { display: flex; gap: 8px; align-items: center; }
+        .manual-code-row input { min-width: 0; }
         .quantity-bar { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; }
         .quantity-bar input { width: 58px; height: 44px; padding: 8px 4px; text-align: center; font-size: 16px; }
         .quantity-bar .icon-button { background: #edf1f4; color: #16202a; }
@@ -73,6 +75,7 @@
             .camera-frame { margin-left: -14px; margin-right: -14px; border-radius: 0; width: calc(100% + 28px); }
             .action-area { gap: 8px; }
             .quantity-bar { margin-left: 0; }
+            .manual-code-row .button { flex: 0 0 auto; }
             .detected-actions .button, .detected-actions button { flex: 1 1 140px; }
             input[type=search] { max-width: none; }
         }
@@ -95,8 +98,8 @@
         <section class="scanner" aria-labelledby="scanner-title">
             <h2 id="scanner-title">Scanner un article</h2>
             <div class="camera-frame"><video id="camera-video" playsinline muted aria-label="Apercu de la camera"></video><div class="scan-guide"></div><p id="camera-status" class="camera-status">Placez le QR code ou le code-barres devant la camera.</p></div>
-            <div class="action-area"><div class="camera-actions"><button id="start-camera" class="icon-button" type="button" aria-label="Demarrer la camera" title="Demarrer la camera"><i data-lucide="Camera"></i></button><button id="retry-camera" class="icon-button secondary" type="button" aria-label="Reessayer la camera" title="Reessayer" hidden><i data-lucide="RefreshCw"></i></button><button id="manual-toggle" class="manual-link" type="button" aria-expanded="false"><i data-lucide="Keyboard"></i><span>Saisir le code article manuellement</span></button></div><div id="idle-quantity" class="quantity-bar" aria-label="Quantite par defaut"><button class="icon-button" type="button" data-quantity-step="-1" aria-label="Diminuer la quantite" title="Diminuer"><i data-lucide="Minus"></i></button><input id="quantity" name="quantity" type="number" min="0" step="1" value="1" aria-label="Quantite"><button class="icon-button" type="button" data-quantity-step="1" aria-label="Augmenter la quantite" title="Augmenter"><i data-lucide="Plus"></i></button><button id="manual-save" class="icon-button save-button" form="item-form" type="submit" aria-label="Enregistrer l article" title="Enregistrer" hidden><i data-lucide="Save"></i></button></div></div>
-            <div id="manual-entry" hidden><form id="item-form"><label class="quantity-label" for="code_article">Code Article</label><input id="code_article" name="code_article" autocomplete="off"></form></div>
+            <div class="action-area"><div class="camera-actions"><button id="start-camera" class="icon-button" type="button" aria-label="Demarrer la camera" title="Demarrer la camera"><i data-lucide="Camera"></i></button><button id="retry-camera" class="icon-button secondary" type="button" aria-label="Reessayer la camera" title="Reessayer" hidden><i data-lucide="RefreshCw"></i></button><button id="manual-toggle" class="manual-link" type="button" aria-expanded="false"><i data-lucide="Keyboard"></i><span>Saisir le code article manuellement</span></button></div></div>
+            <div id="manual-entry" hidden><form id="item-form"><label class="quantity-label" for="code_article">Code Article</label><div class="manual-code-row"><input id="code_article" name="code_article" autocomplete="off" required><button class="button secondary" type="submit">Continuer</button></div></form></div>
             <div id="detected-panel" class="detected" hidden><div class="detected-header"><strong>Article detecte :</strong><span id="detected-code" class="detected-code"></span></div><div class="action-area"><div class="quantity-bar"><button class="icon-button" type="button" data-detected-step="-1" aria-label="Diminuer la quantite" title="Diminuer"><i data-lucide="Minus"></i></button><input id="detected-quantity" type="number" min="0" step="1" value="1" aria-label="Quantite"><button class="icon-button" type="button" data-detected-step="1" aria-label="Augmenter la quantite" title="Augmenter"><i data-lucide="Plus"></i></button><button id="save-detected" class="icon-button save-button" type="button" aria-label="Enregistrer l article" title="Enregistrer"><i data-lucide="Save"></i></button></div><button id="cancel-detected" class="icon-button secondary" type="button" aria-label="Annuler la detection" title="Annuler"><i data-lucide="X"></i></button></div></div>
             <div id="duplicate-panel" class="duplicate" hidden></div>
             <p id="message" class="message" role="status"></p>
