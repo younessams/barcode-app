@@ -22,11 +22,130 @@
         .button, button { border: 0; border-radius: 6px; padding: 11px 14px; background: #1769aa; color: #fff; font: inherit; font-weight: 700; cursor: pointer; text-decoration: none; }
         .button.secondary, button.secondary { background: #edf1f4; color: #16202a; }
         .button:disabled, button:disabled { opacity: .55; cursor: not-allowed; }
-        .scanner, .items { background: #fff; border: 1px solid #dce2e7; border-radius: 8px; margin-top: 16px; }
+
+        .item-actions {
+            display: inline-flex;
+            gap: 6px;
+            flex-wrap: nowrap;
+        }
+
+        .item-action-button {
+            display: inline-grid;
+            place-items: center;
+            width: 38px;
+            height: 38px;
+            min-width: 38px;
+            padding: 0;
+            border: 1px solid transparent;
+            border-radius: 8px;
+            background: transparent;
+            transition: background .15s ease, border-color .15s ease, transform .1s ease;
+        }
+
+        .item-action-button svg {
+            width: 18px;
+            height: 18px;
+            stroke-width: 2;
+        }
+
+        .item-action-button.edit-item {
+            color: #1769aa;
+            background: #edf6fd;
+            border-color: #cfe5f6;
+        }
+
+        .item-action-button.delete-item {
+            color: #b42318;
+            background: #fff1f0;
+            border-color: #f4cfcc;
+        }
+
+        .item-action-button:active {
+            transform: scale(.94);
+        }
+
+        @media (hover: hover) and (pointer: fine) {
+            .item-action-button.edit-item:hover {
+                background: #dceefa;
+            }
+
+            .item-action-button.delete-item:hover {
+                background: #fde3e1;
+            }
+        }        .scanner, .items { background: #fff; border: 1px solid #dce2e7; border-radius: 8px; margin-top: 16px; }
         .scanner { padding: 14px; max-width: 760px; }
-        .camera-frame { position: relative; background: #101820; border-radius: 6px; overflow: hidden; aspect-ratio: 16 / 10; max-height: 42vh; margin-top: 10px; }
+
+        .scanner-heading {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .torch-button {
+            display: inline-grid;
+            place-items: center;
+            width: 38px;
+            height: 38px;
+            min-width: 38px;
+            padding: 0;
+            border: 1px solid #e0e6ea;
+            border-radius: 9px;
+            background: #f7f9fa;
+            color: #52616d;
+            box-shadow: none;
+            transition: background .15s ease, color .15s ease, border-color .15s ease, transform .1s ease;
+        }
+
+        .torch-button svg {
+            width: 19px;
+            height: 19px;
+            stroke-width: 2;
+        }
+
+        .torch-button.is-on {
+            color: #9a6700;
+            background: #fff8df;
+            border-color: #eadba4;
+        }
+
+        .torch-button:active {
+            transform: scale(.94);
+        }        .camera-frame { position: relative; background: #101820; border-radius: 6px; overflow: hidden; aspect-ratio: 16 / 10; max-height: 42vh; margin-top: 10px; }
         #camera-video { display: block; width: 100%; height: 100%; object-fit: cover; }
         .scan-guide { position: absolute; inset: 20% 12%; border: 2px solid #8fd3ff; border-radius: 8px; pointer-events: none; }
+        .scan-line {
+            position: absolute;
+            z-index: 3;
+            top: 50%;
+            left: 10%;
+            right: 10%;
+            height: 1px;
+            transform: translateY(-50%);
+            background: linear-gradient(
+                90deg,
+                rgba(220, 45, 45, .25) 0%,
+                rgba(255, 95, 95, 1) 35%,
+                rgba(255, 255, 255, .95) 50%,
+                rgba(255, 95, 95, 1) 65%,
+                rgba(220, 45, 45, .25) 100%
+            );
+            background-size: 90px 100%;
+            box-shadow: 0 0 2px rgba(220, 45, 45, .45);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity .15s ease;
+            animation: scanner-wave .85s linear infinite;
+        }
+
+        .camera-frame.camera-active .scan-line {
+            opacity: .95;
+        }
+
+        @keyframes scanner-wave {
+            from { background-position: 0 0; }
+            to { background-position: 90px 0; }
+        }
         .camera-status { color: #d8e5ee; text-align: center; padding: 10px; margin: 0; font-size: 14px; }
         .action-area { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
         .camera-actions { display: flex; gap: 6px; flex: 0 0 auto; }
@@ -96,8 +215,8 @@
 
     @if (!$inventory->isCompleted())
         <section class="scanner" aria-labelledby="scanner-title">
-            <h2 id="scanner-title">Scanner un article</h2>
-            <div class="camera-frame"><video id="camera-video" playsinline muted aria-label="Apercu de la camera"></video><div class="scan-guide"></div><p id="camera-status" class="camera-status">Placez le QR code ou le code-barres devant la camera.</p></div>
+            <div class="scanner-heading"><h2 id="scanner-title">Scanner un article</h2><button id="torch-toggle" class="torch-button" type="button" aria-label="Allumer le flash" aria-pressed="false" title="Allumer le flash" hidden><i data-lucide="Flashlight"></i></button></div>
+            <div class="camera-frame"><video id="camera-video" playsinline muted aria-label="Apercu de la camera"></video><div class="scan-guide"></div><div class="scan-line" aria-hidden="true"></div><p id="camera-status" class="camera-status">Placez le QR code ou le code-barres devant la camera.</p></div>
             <div class="action-area"><div class="camera-actions"><button id="start-camera" class="icon-button" type="button" aria-label="Demarrer la camera" title="Demarrer la camera"><i data-lucide="Camera"></i></button><button id="retry-camera" class="icon-button secondary" type="button" aria-label="Reessayer la camera" title="Reessayer" hidden><i data-lucide="RefreshCw"></i></button><button id="manual-toggle" class="manual-link" type="button" aria-expanded="false"><i data-lucide="Keyboard"></i><span>Saisir le code article manuellement</span></button></div></div>
             <div id="manual-entry" hidden><form id="item-form"><label class="quantity-label" for="code_article">Code Article</label><div class="manual-code-row"><input id="code_article" name="code_article" autocomplete="off" required><button class="button secondary" type="submit">Continuer</button></div></form></div>
             <div id="detected-panel" class="detected" hidden><div class="detected-header"><strong>Article detecte :</strong><span id="detected-code" class="detected-code"></span></div><div class="action-area"><div class="quantity-bar"><button class="icon-button" type="button" data-detected-step="-1" aria-label="Diminuer la quantite" title="Diminuer"><i data-lucide="Minus"></i></button><input id="detected-quantity" type="number" min="0" step="1" value="1" aria-label="Quantite"><button class="icon-button" type="button" data-detected-step="1" aria-label="Augmenter la quantite" title="Augmenter"><i data-lucide="Plus"></i></button><button id="save-detected" class="icon-button save-button" type="button" aria-label="Enregistrer l article" title="Enregistrer"><i data-lucide="Save"></i></button></div><button id="cancel-detected" class="icon-button secondary" type="button" aria-label="Annuler la detection" title="Annuler"><i data-lucide="X"></i></button></div></div>
@@ -113,7 +232,7 @@
         <form id="complete-form" method="post" action="{{ route('inventories.complete', $inventory->uuid) }}">@csrf<button class="close-action" type="submit"><i data-lucide="CircleStop"></i>Cloturer l'inventaire</button></form>
     @endif
 
-    <details id="items-section" class="items"><summary><i data-lucide="ChevronDown"></i>Voir les articles comptes ({{ $inventory->items->count() }})</summary><div class="items-toolbar"><h2>Articles comptes</h2><input id="search" type="search" placeholder="Rechercher un code" aria-label="Rechercher un code"></div><div class="table-wrap"><table><thead><tr><th>Code Article</th><th>Quantite</th><th>QR</th>@if (!$inventory->isCompleted())<th>Actions</th>@endif</tr></thead><tbody id="items-body">@foreach ($inventory->items as $item)<tr data-code="{{ strtolower($item->code_article) }}" data-item="{{ $item->uuid }}"><td>{{ $item->code_article }}</td><td class="quantity">{{ $item->quantity }}</td><td>Disponible a l'export</td>@if (!$inventory->isCompleted())<td><div class="actions"><button class="button secondary edit-item" type="button">Modifier</button><button class="button secondary delete-item" type="button">Supprimer</button></div></td>@endif</tr>@endforeach</tbody></table></div><p id="empty-items" class="empty" @if ($inventory->items->isNotEmpty()) hidden @endif>Aucun article compte.</p></details>
+    <details id="items-section" class="items"><summary><i data-lucide="ChevronDown"></i>Voir les articles comptes ({{ $inventory->items->count() }})</summary><div class="items-toolbar"><h2>Articles comptes</h2><input id="search" type="search" placeholder="Rechercher un code" aria-label="Rechercher un code"></div><div class="table-wrap"><table><thead><tr><th>Code Article</th><th>Quantite</th><th>QR</th>@if (!$inventory->isCompleted())<th>Actions</th>@endif</tr></thead><tbody id="items-body">@foreach ($inventory->items as $item)<tr data-code="{{ strtolower($item->code_article) }}" data-item="{{ $item->uuid }}"><td>{{ $item->code_article }}</td><td class="quantity">{{ $item->quantity }}</td><td>Disponible a l'export</td>@if (!$inventory->isCompleted())<td><div class="actions item-actions"><button class="item-action-button edit-item" type="button" aria-label="Modifier l article" title="Modifier"><i data-lucide="Pencil"></i></button><button class="item-action-button delete-item" type="button" aria-label="Supprimer l article" title="Supprimer"><i data-lucide="Trash2"></i></button></div></td>@endif</tr>@endforeach</tbody></table></div><p id="empty-items" class="empty" @if ($inventory->items->isNotEmpty()) hidden @endif>Aucun article compte.</p></details>
 </div>
 </body>
 </html>

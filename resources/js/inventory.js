@@ -1,8 +1,10 @@
 import { BrowserMultiFormatReader } from '@zxing/browser';
-import { Camera, ChevronDown, createIcons, Keyboard, Minus, Plus, RefreshCw, Save, X } from 'lucide';
+import { Camera, ChevronDown, createIcons, Flashlight, FlashlightOff, Keyboard, Minus, Pencil, Plus, RefreshCw, Save, Trash2, X } from 'lucide';
 
 const app = document.querySelector('.app');
 const video = document.querySelector('#camera-video');
+const cameraFrame = document.querySelector('.camera-frame');
+const torchButton = document.querySelector('#torch-toggle');
 const form = document.querySelector('#item-form');
 const codeInput = document.querySelector('#code_article');
 const detectedPanel = document.querySelector('#detected-panel');
@@ -28,8 +30,13 @@ let nativeFrame = 0;
 let zxingControls = null;
 let pendingCode = null;
 let pendingDuplicate = null;
+let freezeTimer = null;
+let scanAudioContext = null;
+let torchSupported = false;
+let torchEnabled = false;
+const SCAN_FREEZE_MS = 1800;
 
-createIcons({ icons: { Camera, ChevronDown, Keyboard, Minus, Plus, RefreshCw, Save, X } });
+createIcons({ icons: { Camera, ChevronDown, Keyboard, Minus, Pencil, Plus, RefreshCw, Save, Trash2, X } });
 
 function adjustQuantity(input, amount) {
     if (!input) return;
@@ -45,6 +52,179 @@ function setMessage(text, error = false) {
 
 function setCameraStatus(text) {
     if (cameraStatus) cameraStatus.textContent = text;
+}
+
+function primeScanAudio() {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+
+    try {
+        if (!scanAudioContext) scanAudioContext = new AudioContextClass();
+        if (scanAudioContext.state === 'suspended') {
+            scanAudioContext.resume().catch(() => {});
+        }
+    } catch (error) {
+        // Scan sound is optional and must never block scanning.
+    }
+}
+
+function playScanBeep() {
+    try {
+        primeScanAudio();
+        if (!scanAudioContext || scanAudioContext.state !== 'running') return;
+
+        const now = scanAudioContext.currentTime;
+        const oscillator = scanAudioContext.createOscillator();
+        const gain = scanAudioContext.createGain();
+
+        oscillator.type = 'square';
+
+        // Short, stronger scanner-style chirp.
+        oscillator.frequency.setValueAtTime(1650, now);
+        oscillator.frequency.exponentialRampToValueAtTime(1150, now + 0.115);
+
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.exponentialRampToValueAtTime(0.18, now + 0.004);
+        gain.gain.setValueAtTime(0.18, now + 0.055);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+
+        oscillator.connect(gain);
+        gain.connect(scanAudioContext.destination);
+
+        oscillator.start(now);
+        oscillator.stop(now + 0.125);
+    } catch (error) {
+        // Scan sound is optional and must never block scanning.
+    }
+}
+
+function resumeLiveVideo() {
+    if (video && mediaStream && video.paused) {
+        video.play().catch(() => {});
+    }
+}
+
+function clearFreezeTimer(resumeVideo = true) {
+    if (freezeTimer) {
+        clearTimeout(freezeTimer);
+        freezeTimer = null;
+    }
+
+    if (resumeVideo) resumeLiveVideo();
+}
+
+function freezeCameraFrame() {
+    clearFreezeTimer(false);
+
+    if (!video || !mediaStream) return;
+
+    video.pause();
+
+    freezeTimer = window.setTimeout(() => {
+        freezeTimer = null;
+        resumeLiveVideo();
+    }, SCAN_FREEZE_MS);
+}
+
+function getVideoTrack() {
+    return mediaStream?.getVideoTracks?.()[0] || null;
+}
+
+function renderTorchButton() {
+    if (!torchButton) return;
+
+    torchButton.hidden = !torchSupported;
+
+    if (!torchSupported) return;
+
+    torchButton.classList.toggle('is-on', torchEnabled);
+
+    torchButton.innerHTML = torchEnabled
+        ? '<i data-lucide="FlashlightOff"></i>'
+        : '<i data-lucide="Flashlight"></i>';
+
+    const label = torchEnabled
+        ? 'Eteindre le flash'
+        : 'Allumer le flash';
+
+    torchButton.setAttribute('aria-label', label);
+    torchButton.setAttribute('title', label);
+    torchButton.setAttribute('aria-pressed', String(torchEnabled));
+
+    createIcons({ icons: { Flashlight, FlashlightOff } });
+}
+
+async function configureTorch() {
+    torchSupported = false;
+    torchEnabled = false;
+
+    const track = getVideoTrack();
+
+    if (!track || typeof track.getCapabilities !== 'function') {
+        renderTorchButton();
+        return;
+    }
+
+    try {
+        const capabilities = track.getCapabilities();
+
+        if (!capabilities?.torch) {
+            renderTorchButton();
+            return;
+        }
+
+        torchSupported = true;
+
+        // Every new camera session starts with the torch OFF.
+        try {
+            await track.applyConstraints({
+                advanced: [{ torch: false }],
+            });
+        } catch (error) {
+            // Some browsers expose torch capability but reject an explicit OFF.
+            // The camera still remains usable.
+        }
+
+        renderTorchButton();
+    } catch (error) {
+        torchSupported = false;
+        torchEnabled = false;
+        renderTorchButton();
+    }
+}
+
+async function toggleTorch() {
+    if (!torchSupported) return;
+
+    const track = getVideoTrack();
+
+    if (!track) return;
+
+    const nextState = !torchEnabled;
+
+    try {
+        await track.applyConstraints({
+            advanced: [{ torch: nextState }],
+        });
+
+        torchEnabled = nextState;
+        renderTorchButton();
+    } catch (error) {
+        torchEnabled = false;
+        renderTorchButton();
+        setMessage('Flash indisponible sur cet appareil.', true);
+    }
+}
+
+function resetTorchState() {
+    torchEnabled = false;
+    torchSupported = false;
+
+    if (torchButton) {
+        torchButton.hidden = true;
+        torchButton.classList.remove('is-on');
+        torchButton.setAttribute('aria-pressed', 'false');
+    }
 }
 
 function updateSummary(payload) {
@@ -63,17 +243,27 @@ function stopDecoder() {
 
 function stopCamera() {
     stopDecoder();
+    clearFreezeTimer(false);
+    resetTorchState();
     if (mediaStream) mediaStream.getTracks().forEach((track) => track.stop());
     mediaStream = null;
     if (video) video.srcObject = null;
+    if (cameraFrame) cameraFrame.classList.remove('camera-active');
 }
 
-function showDetected(code) {
+function showDetected(code, source = 'manual') {
     if (scannerState !== READY || !code) return;
+
     scannerState = DETECTED;
     pendingCode = code;
-    if (navigator.vibrate) navigator.vibrate(50);
     stopDecoder();
+
+    if (source === 'camera') {
+        playScanBeep();
+        if (navigator.vibrate) navigator.vibrate(50);
+        freezeCameraFrame();
+    }
+
     detectedCode.textContent = code;
     detectedQuantity.value = '1';
     detectedPanel.hidden = false;
@@ -86,7 +276,7 @@ async function nativeScan() {
     if (scannerState !== READY || !nativeDetector || !video || video.readyState < 2) return;
     try {
         const results = await nativeDetector.detect(video);
-        if (results.length) showDetected(results[0].rawValue);
+        if (results.length) showDetected(results[0].rawValue, 'camera');
     } catch (error) {
         // Camera frames can be unavailable briefly while mobile Chrome rotates or focuses.
     }
@@ -110,12 +300,13 @@ async function startDecoder() {
     nativeDetector = null;
     const reader = new BrowserMultiFormatReader();
     zxingControls = await reader.decodeFromVideoElementContinuously(video, (result) => {
-        if (result) showDetected(result.getText());
+        if (result) showDetected(result.getText(), 'camera');
     });
     setCameraStatus('Pret a scanner un QR code ou un code-barres.');
 }
 
 async function startCamera() {
+    primeScanAudio();
     if (scannerState !== READY || mediaStream) return;
     if (!navigator.mediaDevices?.getUserMedia) {
         setCameraStatus('Camera indisponible dans ce navigateur.');
@@ -129,6 +320,8 @@ async function startCamera() {
         mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
         video.srcObject = mediaStream;
         await video.play();
+        if (cameraFrame) cameraFrame.classList.add('camera-active');
+        await configureTorch();
         await startDecoder();
     } catch (error) {
         stopCamera();
@@ -142,6 +335,7 @@ async function startCamera() {
 }
 
 function resumeScanning() {
+    clearFreezeTimer(true);
     pendingCode = null;
     pendingDuplicate = null;
     scannerState = READY;
@@ -158,12 +352,13 @@ function renderItem(item) {
     if (!row) {
         row = document.createElement('tr');
         row.dataset.item = item.uuid;
-        row.innerHTML = '<td></td><td class="quantity"></td><td>Disponible a l export</td><td><div class="actions"><button class="button secondary edit-item" type="button">Modifier</button><button class="button secondary delete-item" type="button">Supprimer</button></div></td>';
+        row.innerHTML = '<td></td><td class="quantity"></td><td>Disponible a l export</td><td><div class="actions item-actions"><button class="item-action-button edit-item" type="button" aria-label="Modifier l article" title="Modifier"><i data-lucide="Pencil"></i></button><button class="item-action-button delete-item" type="button" aria-label="Supprimer l article" title="Supprimer"><i data-lucide="Trash2"></i></button></div></td>';
         document.querySelector('#items-body').prepend(row);
     }
     row.dataset.code = item.code_article.toLocaleLowerCase();
     row.firstElementChild.textContent = item.code_article;
     row.querySelector('.quantity').textContent = item.quantity;
+    createIcons({ icons: { Pencil, Trash2 } });
     document.querySelector('#empty-items').hidden = true;
 }
 
@@ -213,6 +408,7 @@ function toggleManual() {
 }
 
 if (startButton) startButton.addEventListener('click', startCamera);
+if (torchButton) torchButton.addEventListener('click', toggleTorch);
 if (retryButton) retryButton.addEventListener('click', startCamera);
 if (manualToggle) manualToggle.addEventListener('click', toggleManual);
 if (document.querySelector('#save-detected')) document.querySelector('#save-detected').addEventListener('click', () => saveItem(pendingCode, detectedQuantity.value));
@@ -220,7 +416,7 @@ if (document.querySelector('#cancel-detected')) document.querySelector('#cancel-
 if (form) form.addEventListener('submit', (event) => {
     event.preventDefault();
     const code = codeInput.value.trim();
-    if (code) showDetected(code);
+    if (code) showDetected(code, 'manual');
 });
 
 document.querySelectorAll('[data-detected-step]').forEach((button) => button.addEventListener('click', () => adjustQuantity(detectedQuantity, Number(button.dataset.detectedStep))));
@@ -261,7 +457,14 @@ if (completeForm) completeForm.addEventListener('submit', (event) => {
 });
 
 document.addEventListener('visibilitychange', () => {
-    if (document.hidden) stopDecoder();
-    else if (!document.hidden && mediaStream && scannerState === READY) startDecoder().catch(() => {});
+    if (document.hidden) {
+        stopDecoder();
+        clearFreezeTimer(false);
+        return;
+    }
+
+    if (mediaStream) resumeLiveVideo();
+    if (mediaStream && scannerState === READY) startDecoder().catch(() => {});
 });
+
 window.addEventListener('pagehide', stopCamera);
