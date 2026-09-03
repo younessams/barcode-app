@@ -86,6 +86,9 @@ if [ ! -f .env ]; then
     php -c php-termux.ini artisan key:generate
 fi
 
+printf '%s\n' 'Applying database migrations...'
+php -c php-termux.ini artisan migrate --force
+
 cat > "$PREFIX/bin/start-app" <<EOF
 #!/data/data/com.termux/files/usr/bin/bash
 

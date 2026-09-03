@@ -11,6 +11,7 @@
         body { margin: 0; min-width: 320px; }
         .app { max-width: 1280px; margin: 0 auto; padding: 28px; }
         header { margin-bottom: 22px; } h1 { margin: 0; font-size: 25px; } .subtitle, .field-help { color: #607080; }
+        .top-nav { display: inline-flex; gap: 3px; margin-bottom: 20px; padding: 3px; background: #e9eef2; border-radius: 8px; } .top-nav a { color: #52616d; text-decoration: none; font-size: 13px; font-weight: 700; padding: 7px 12px; border-radius: 6px; } .top-nav a.active { color: #16202a; background: #fff; box-shadow: 0 1px 3px #1824311c; }
         main { display: grid; grid-template-columns: minmax(300px, 390px) minmax(0, 1fr); gap: 24px; align-items: start; }
         .panel, .preview-panel { background: #fff; border: 1px solid #dce2e7; border-radius: 8px; }
         .panel-body, .preview-panel { padding: 22px; } .section { border-top: 1px solid #e5e9ed; padding-top: 18px; margin-top: 18px; }
@@ -38,6 +39,7 @@
 </head>
 <body>
 <div class="app" data-headers-url="{{ route('labels.headers') }}">
+    <nav class="top-nav"><a class="active" href="{{ route('labels.index') }}">Etiquettes</a><a href="{{ route('inventories.index') }}">Inventaire</a></nav>
     <header><h1>Generateur d'etiquettes</h1><p class="subtitle">Code 128 vectoriel sur page A4 prete a imprimer.</p></header>
     <main>
         <section class="panel"><div class="panel-body">
