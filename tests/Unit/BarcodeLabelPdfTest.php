@@ -43,4 +43,18 @@ final class BarcodeLabelPdfTest extends TestCase
         $this->assertStringStartsWith('%PDF', $content);
         $this->assertStringNotContainsString('/Subtype /Image', $content);
     }
+
+    public function test_qr_pdf_is_vector_a4_square_and_paginates_all_presets(): void
+    {
+        $catalog = new A4LabelPresetCatalog;
+        $renderer = new BarcodeLabelPdf;
+        foreach ($catalog->ids() as $id) {
+            $layout = $catalog->layout($id);
+            $labels = array_fill(0, $layout['guides']['slotsPerPage'] + 1, new BarcodeLabel('6DROGUER-050'));
+            $content = $renderer->render($labels, $layout, 'qr');
+            $this->assertSame(2, $renderer->pageCount(count($labels), $layout));
+            $this->assertStringContainsString('/MediaBox [0.000000 0.000000 595.275591 841.889764]', $content);
+            $this->assertStringNotContainsString('/Subtype /Image', $content);
+        }
+    }
 }

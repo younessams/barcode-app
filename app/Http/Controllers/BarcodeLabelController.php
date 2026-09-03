@@ -4,9 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Services\BarcodeLabels\A4LabelPresetCatalog;
 use App\Services\BarcodeLabels\BarcodeLabelPdf;
+use App\Services\BarcodeLabels\CodeType;
 use App\Services\BarcodeLabels\ExcelLabelParseException;
 use App\Services\BarcodeLabels\ExcelLabelParser;
 use App\Services\BarcodeLabels\LabelPresetException;
+use App\Services\BarcodeLabels\QrCodeLayoutException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -48,6 +50,7 @@ final class BarcodeLabelController extends Controller
             'excel_file' => ['required', 'file', 'max:10240', 'mimes:xlsx,xls', 'mimetypes:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/octet-stream,application/zip'],
             'excel_column' => ['required', 'string', 'max:120'],
             'preset_id' => ['required', 'string', 'in:'.implode(',', $catalog->ids())],
+            'code_type' => ['nullable', 'string', 'in:'.implode(',', CodeType::values())],
         ]);
 
         $file = $validated['excel_file'];
@@ -68,7 +71,11 @@ final class BarcodeLabelController extends Controller
             return back()->withErrors(['excel_file' => $exception->getMessage()])->withInput();
         }
 
-        $content = $pdf->render($labels, $layout);
+        try {
+            $content = $pdf->render($labels, $layout, $validated['code_type'] ?? CodeType::CODE128);
+        } catch (QrCodeLayoutException $exception) {
+            return back()->withErrors(['excel_file' => $exception->getMessage()])->withInput();
+        }
         $pages = $pdf->pageCount(count($labels), $layout);
         $token = Str::random(40);
         $directory = storage_path('app/generated-labels');
