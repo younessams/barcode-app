@@ -10,13 +10,17 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 final class InventoryExcelExporter
 {
-    public function export(InventorySession $session): string
+    public function export(InventorySession $session, bool $includeQr = false): string
     {
         $spreadsheet = new Spreadsheet;
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setCellValue('A1', 'Code Article');
         $sheet->setCellValue('B1', 'Quantité');
-        $sheet->setCellValue('C1', 'QR Code');
+
+        if ($includeQr) {
+            $sheet->setCellValue('C1', 'QR Code');
+        }
+
         $tempFiles = [];
 
         try {
@@ -24,21 +28,29 @@ final class InventoryExcelExporter
                 $excelRow = $row + 2;
                 $sheet->setCellValueExplicit('A'.$excelRow, $item->code_article, DataType::TYPE_STRING);
                 $sheet->setCellValue('B'.$excelRow, $item->quantity);
-                $qrPath = $this->createQrPng($item->code_article, $session->uuid.'-'.$item->uuid);
-                $tempFiles[] = $qrPath;
-                $drawing = new Drawing;
-                $drawing->setName('QR Code');
-                $drawing->setDescription($item->code_article);
-                $drawing->setPath($qrPath);
-                $drawing->setHeight(72);
-                $drawing->setCoordinates('C'.$excelRow);
-                $drawing->setWorksheet($sheet);
-                $sheet->getRowDimension($excelRow)->setRowHeight(58);
+
+                if ($includeQr) {
+                    $qrPath = $this->createQrPng($item->code_article, $session->uuid.'-'.$item->uuid);
+                    $tempFiles[] = $qrPath;
+
+                    $drawing = new Drawing;
+                    $drawing->setName('QR Code');
+                    $drawing->setDescription($item->code_article);
+                    $drawing->setPath($qrPath);
+                    $drawing->setHeight(72);
+                    $drawing->setCoordinates('C'.$excelRow);
+                    $drawing->setWorksheet($sheet);
+
+                    $sheet->getRowDimension($excelRow)->setRowHeight(58);
+                }
             }
 
             $sheet->getColumnDimension('A')->setWidth(26);
             $sheet->getColumnDimension('B')->setWidth(12);
-            $sheet->getColumnDimension('C')->setWidth(14);
+
+            if ($includeQr) {
+                $sheet->getColumnDimension('C')->setWidth(14);
+            }
             $path = storage_path('app/'.'inventory-'.($session->uuid).'.xlsx');
             (new Xlsx($spreadsheet))->save($path);
 

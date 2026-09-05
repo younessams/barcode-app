@@ -1,5 +1,5 @@
 import { BrowserMultiFormatReader } from '@zxing/browser';
-import { Camera, ChevronDown, createIcons, Flashlight, FlashlightOff, Keyboard, Minus, Pencil, Plus, RefreshCw, Save, Trash2, X } from 'lucide';
+import { Camera, CheckCircle2, ChevronDown, CircleAlert, createIcons, Flashlight, FlashlightOff, Keyboard, Minus, Pencil, Plus, RefreshCw, Save, Trash2, X } from 'lucide';
 
 const app = document.querySelector('.app');
 const video = document.querySelector('#camera-video');
@@ -19,6 +19,10 @@ const manualToggle = document.querySelector('#manual-toggle');
 const manualEntry = document.querySelector('#manual-entry');
 const manualSave = document.querySelector('#manual-save');
 const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+const toast = document.querySelector('#action-toast');
+const toastIcon = document.querySelector('#action-toast-icon');
+const toastMessage = document.querySelector('#action-toast-message');
+const toastProgress = document.querySelector('#action-toast-progress');
 
 const READY = 'READY';
 const DETECTED = 'DETECTED';
@@ -34,9 +38,68 @@ let freezeTimer = null;
 let scanAudioContext = null;
 let torchSupported = false;
 let torchEnabled = false;
+let toastTimer = null;
+let toastFrame = null;
+let quantityFocusTimer = null;
 const SCAN_FREEZE_MS = 1800;
+const TOAST_DURATION_MS = 2800;
 
 createIcons({ icons: { Camera, ChevronDown, Keyboard, Minus, Pencil, Plus, RefreshCw, Save, Trash2, X } });
+
+function syncQuantityModalViewport() {
+    if (!detectedPanel || detectedPanel.hidden) return;
+
+    const viewport = window.visualViewport;
+
+    if (!viewport) {
+        detectedPanel.style.removeProperty('top');
+        detectedPanel.style.removeProperty('height');
+        return;
+    }
+
+    detectedPanel.style.top = `${viewport.offsetTop}px`;
+    detectedPanel.style.height = `${viewport.height}px`;
+}
+
+function clearQuantityFocusTimer() {
+    if (!quantityFocusTimer) return;
+
+    clearTimeout(quantityFocusTimer);
+    quantityFocusTimer = null;
+}
+
+function focusQuantityInput() {
+    if (!detectedQuantity || !detectedPanel || detectedPanel.hidden) return;
+
+    clearQuantityFocusTimer();
+
+    requestAnimationFrame(() => {
+        if (detectedPanel.hidden) return;
+
+        syncQuantityModalViewport();
+
+        try {
+            detectedQuantity.focus({ preventScroll: true });
+            detectedQuantity.select();
+        } catch (error) {
+            detectedQuantity.focus();
+        }
+
+        quantityFocusTimer = window.setTimeout(() => {
+            quantityFocusTimer = null;
+
+            if (detectedPanel.hidden) return;
+
+            syncQuantityModalViewport();
+
+            detectedQuantity.scrollIntoView({
+                block: 'center',
+                inline: 'nearest',
+                behavior: 'smooth',
+            });
+        }, 120);
+    });
+}
 
 function adjustQuantity(input, amount) {
     if (!input) return;
@@ -50,6 +113,56 @@ function setMessage(text, error = false) {
     message.classList.toggle('error', error);
 }
 
+function hideToast() {
+    if (!toast) return;
+
+    if (toastTimer) {
+        clearTimeout(toastTimer);
+        toastTimer = null;
+    }
+
+    if (toastFrame) {
+        cancelAnimationFrame(toastFrame);
+        toastFrame = null;
+    }
+
+    toast.classList.remove('show');
+}
+
+function showToast(text, type = 'success', duration = TOAST_DURATION_MS) {
+    if (!toast || !toastMessage || !toastProgress || !toastIcon) return;
+
+    hideToast();
+
+    toast.classList.remove('success', 'info', 'danger');
+    toast.classList.add(type);
+
+    toastMessage.textContent = text;
+
+    const icon = type === 'danger' ? 'CircleAlert' : 'CheckCircle2';
+    toastIcon.innerHTML = `<i data-lucide="${icon}"></i>`;
+
+    createIcons({ icons: { CheckCircle2, CircleAlert } });
+
+    toastProgress.style.transition = 'none';
+    toastProgress.style.transform = 'scaleX(1)';
+
+    // Force the browser to paint the full bar before starting the countdown.
+    void toastProgress.offsetWidth;
+
+    toast.classList.add('show');
+
+    toastFrame = requestAnimationFrame(() => {
+        toastProgress.style.transition = `transform ${duration}ms linear`;
+        toastProgress.style.transform = 'scaleX(0)';
+        toastFrame = null;
+    });
+
+    toastTimer = window.setTimeout(() => {
+        toast.classList.remove('show');
+        toastTimer = null;
+    }, duration);
+}
 function setCameraStatus(text) {
     if (cameraStatus) cameraStatus.textContent = text;
 }
@@ -267,6 +380,9 @@ function showDetected(code, source = 'manual') {
     detectedCode.textContent = code;
     detectedQuantity.value = '1';
     detectedPanel.hidden = false;
+    document.body.classList.add('quantity-modal-open');
+    syncQuantityModalViewport();
+    focusQuantityInput();
     manualEntry.hidden = true;
     manualToggle.setAttribute('aria-expanded', 'false');
     setCameraStatus('Code detecte. Saisissez la quantite.');
@@ -336,9 +452,17 @@ async function startCamera() {
 
 function resumeScanning() {
     clearFreezeTimer(true);
+    clearQuantityFocusTimer();
+
+    if (detectedPanel) {
+        detectedPanel.style.removeProperty('top');
+        detectedPanel.style.removeProperty('height');
+    }
+
     pendingCode = null;
     pendingDuplicate = null;
     scannerState = READY;
+    document.body.classList.remove('quantity-modal-open');
     detectedPanel.hidden = true;
     duplicatePanel.hidden = true;
     duplicatePanel.replaceChildren();
@@ -380,22 +504,50 @@ async function saveItem(code, quantity, mode = null) {
             const title = document.createElement('strong'); title.textContent = 'Article deja compte';
             const code = document.createElement('p'); code.textContent = payload.item.code_article;
             const quantities = document.createElement('p'); quantities.innerHTML = `Quantite actuelle : ${Number(payload.item.quantity)}<br>Nouvelle quantite : ${Number(quantity)}`;
-            const add = document.createElement('button'); add.type = 'button'; add.className = 'secondary'; add.innerHTML = '<i data-lucide="Plus"></i>Ajouter'; add.addEventListener('click', () => saveItem(pendingDuplicate.code, pendingDuplicate.quantity, 'add'));
-            const replace = document.createElement('button'); replace.type = 'button'; replace.className = 'secondary'; replace.innerHTML = '<i data-lucide="RefreshCw"></i>Remplacer'; replace.addEventListener('click', () => saveItem(pendingDuplicate.code, pendingDuplicate.quantity, 'replace'));
-            const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'secondary'; cancel.innerHTML = '<i data-lucide="X"></i>Annuler'; cancel.addEventListener('click', resumeScanning);
-            duplicatePanel.append(title, code, quantities, add, replace, cancel);
+            const actions = document.createElement('div');
+            actions.className = 'duplicate-actions';
+
+            const add = document.createElement('button');
+            add.type = 'button';
+            add.className = 'duplicate-action duplicate-add';
+            add.innerHTML = '<i data-lucide="Plus"></i><span>Ajouter</span>';
+            add.addEventListener('click', () => saveItem(pendingDuplicate.code, pendingDuplicate.quantity, 'add'));
+
+            const replace = document.createElement('button');
+            replace.type = 'button';
+            replace.className = 'duplicate-action duplicate-replace';
+            replace.innerHTML = '<i data-lucide="RefreshCw"></i><span>Remplacer</span>';
+            replace.addEventListener('click', () => saveItem(pendingDuplicate.code, pendingDuplicate.quantity, 'replace'));
+
+            const cancel = document.createElement('button');
+            cancel.type = 'button';
+            cancel.className = 'duplicate-action duplicate-cancel';
+            cancel.innerHTML = '<i data-lucide="X"></i><span>Annuler</span>';
+            cancel.addEventListener('click', resumeScanning);
+
+            actions.append(add, replace, cancel);
+            duplicatePanel.append(title, code, quantities, actions);
             createIcons({ icons: { Plus, RefreshCw, X } });
             return;
         }
         if (!response.ok) throw new Error(payload.message || 'La saisie n a pas pu etre enregistree.');
         renderItem(payload.item);
         updateSummary(payload);
-        setMessage('Article enregistre.');
+
+        if (mode === 'add') {
+            showToast(`Quantite ajoutee a ${payload.item.code_article}`, 'success');
+        } else if (mode === 'replace') {
+            showToast(`Quantite remplacee pour ${payload.item.code_article}`, 'info');
+        } else {
+            showToast(`Article ${payload.item.code_article} enregistre`, 'success');
+        }
+
         if (form) form.reset();
         resumeScanning();
     } catch (error) {
         scannerState = DETECTED;
         setMessage(error.message, true);
+        showToast(error.message || 'Enregistrement impossible.', 'danger', 3600);
     }
 }
 
@@ -419,6 +571,28 @@ if (form) form.addEventListener('submit', (event) => {
     if (code) showDetected(code, 'manual');
 });
 
+if (detectedQuantity) {
+    detectedQuantity.addEventListener('input', () => {
+        const digits = detectedQuantity.value.replace(/[^\d]/g, '');
+
+        if (detectedQuantity.value !== digits) {
+            detectedQuantity.value = digits;
+        }
+    });
+
+    detectedQuantity.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') return;
+
+        event.preventDefault();
+
+        const saveButton = document.querySelector('#save-detected');
+
+        if (saveButton && !saveButton.disabled) {
+            saveButton.click();
+        }
+    });
+}
+
 document.querySelectorAll('[data-detected-step]').forEach((button) => button.addEventListener('click', () => adjustQuantity(detectedQuantity, Number(button.dataset.detectedStep))));
 
 const search = document.querySelector('#search');
@@ -434,10 +608,22 @@ if (itemsBody) itemsBody.addEventListener('click', async (event) => {
     const itemUuid = row.dataset.item;
     if (event.target.closest('.delete-item')) {
         if (!window.confirm('Supprimer cet article de l inventaire ?')) return;
+
+        const articleCode = row.firstElementChild?.textContent?.trim() || 'Article';
         const response = await fetch(`${app.dataset.itemUrl}/${itemUuid}`, { method: 'DELETE', headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' } });
         const payload = await response.json();
-        if (!response.ok) { setMessage(payload.message || 'Suppression impossible.', true); return; }
-        row.remove(); updateSummary(payload); document.querySelector('#empty-items').hidden = document.querySelectorAll('#items-body tr').length > 0; setMessage('Article supprime.');
+
+        if (!response.ok) {
+            const errorMessage = payload.message || 'Suppression impossible.';
+            setMessage(errorMessage, true);
+            showToast(errorMessage, 'danger', 3600);
+            return;
+        }
+
+        row.remove();
+        updateSummary(payload);
+        document.querySelector('#empty-items').hidden = document.querySelectorAll('#items-body tr').length > 0;
+        showToast(`Article ${articleCode} supprime`, 'danger');
     }
     if (event.target.closest('.edit-item')) {
         const quantity = window.prompt('Nouvelle quantite', row.querySelector('.quantity').textContent);
@@ -445,8 +631,17 @@ if (itemsBody) itemsBody.addEventListener('click', async (event) => {
         const data = new FormData(); data.append('quantity', quantity); data.append('_method', 'PATCH');
         const response = await fetch(`${app.dataset.itemUrl}/${itemUuid}`, { method: 'POST', body: data, headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' } });
         const payload = await response.json();
-        if (!response.ok) { setMessage(payload.message || 'Quantite invalide.', true); return; }
-        renderItem(payload.item); updateSummary(payload); setMessage('Quantite mise a jour.');
+
+        if (!response.ok) {
+            const errorMessage = payload.message || 'Quantite invalide.';
+            setMessage(errorMessage, true);
+            showToast(errorMessage, 'danger', 3600);
+            return;
+        }
+
+        renderItem(payload.item);
+        updateSummary(payload);
+        showToast(`Quantite de ${payload.item.code_article} mise a jour`, 'info');
     }
 });
 
@@ -467,4 +662,12 @@ document.addEventListener('visibilitychange', () => {
     if (mediaStream && scannerState === READY) startDecoder().catch(() => {});
 });
 
-window.addEventListener('pagehide', stopCamera);
+if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', syncQuantityModalViewport);
+    window.visualViewport.addEventListener('scroll', syncQuantityModalViewport);
+}
+
+window.addEventListener('pagehide', () => {
+    clearQuantityFocusTimer();
+    stopCamera();
+});

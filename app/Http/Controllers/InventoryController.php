@@ -131,10 +131,11 @@ final class InventoryController extends Controller
         return back();
     }
 
-    public function export(string $uuid, InventoryExcelExporter $exporter): BinaryFileResponse
+    public function export(Request $request, string $uuid, InventoryExcelExporter $exporter): BinaryFileResponse
     {
         $session = $this->find($uuid);
-        $path = $exporter->export($session);
+        $includeQr = $request->boolean('include_qr');
+        $path = $exporter->export($session, $includeQr);
         $zone = $session->zone ? '-'.Str::slug($session->zone) : '';
         $filename = 'inventaire'.$zone.'-'.now()->format('Y-m-d').'.xlsx';
 
