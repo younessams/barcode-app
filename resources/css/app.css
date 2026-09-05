@@ -1,3 +1,9 @@
+@import '@fontsource/manrope/400.css';
+@import '@fontsource/manrope/500.css';
+@import '@fontsource/manrope/600.css';
+@import '@fontsource/manrope/700.css';
+@import '@fontsource/manrope/800.css';
+
 @import 'tailwindcss';
 
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
@@ -6,6 +12,92 @@
 @source '../**/*.js';
 
 @theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+    --font-sans: 'Manrope', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
+}
+
+
+/* Global application typography */
+html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+body {
+    font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+    letter-spacing: -0.012em;
+}
+
+button,
+input,
+select,
+textarea {
+    font-family: inherit;
+}
+
+strong,
+b {
+    letter-spacing: -0.015em;
+}
+
+/* Shared application navigation */
+.app-nav {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-bottom: 22px;
+    padding: 5px;
+    border: 1px solid #dce3e8;
+    border-radius: 13px;
+    background: #edf1f4;
+}
+
+.app-nav-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 38px;
+    padding: 8px 16px;
+    border-radius: 9px;
+    color: #52616d;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: -.01em;
+    transition:
+        background .16s ease,
+        color .16s ease,
+        transform .12s ease,
+        box-shadow .16s ease;
+}
+
+.app-nav-link:hover {
+    color: #16202a;
+    background: rgba(255, 255, 255, .72);
+}
+
+.app-nav-link:active {
+    transform: scale(.97);
+}
+
+.app-nav-link.active {
+    color: #fff;
+    background: #1769aa;
+    box-shadow: 0 3px 8px rgba(23, 105, 170, .20);
+}
+
+@media (max-width: 600px) {
+    .app-nav {
+        display: flex;
+        width: 100%;
+        margin-bottom: 18px;
+    }
+
+    .app-nav-link {
+        flex: 1 1 0;
+        padding-left: 10px;
+        padding-right: 10px;
+    }
 }

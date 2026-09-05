@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $inventory->name }}</title>
-    @vite(['resources/js/inventory.js'])
+    @vite(['resources/css/app.css', 'resources/js/inventory.js'])
     <style>
-        :root { font-family: Inter, system-ui, sans-serif; color: #16202a; background: #f4f6f8; }
+        :root { color: #16202a; background: #f4f6f8; }
         * { box-sizing: border-box; }
         body { margin: 0; }
 
@@ -108,12 +108,9 @@
                 transition: none !important;
             }
         }        .app { max-width: 920px; margin: auto; padding: 20px; }
-        nav { display: inline-flex; gap: 3px; margin-bottom: 16px; padding: 3px; background: #e9eef2; border-radius: 8px; }
-        nav a { color: #52616d; text-decoration: none; font-size: 13px; font-weight: 700; padding: 7px 12px; border-radius: 6px; }
-        nav a.active { color: #16202a; background: #fff; box-shadow: 0 1px 3px #1824311c; }
         .top { display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
-        h1 { margin: 0; font-size: 24px; }
-        h2 { margin: 0; font-size: 17px; }
+        h1 { margin: 0; font-size: 22px; letter-spacing: -.025em; }
+        h2 { margin: 0; font-size: 16px; }
         .meta { color: #607080; margin: 6px 0 18px; }
         .toolbar, .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
@@ -678,7 +675,7 @@
 </div>
 
 <div class="app" data-inventory="{{ $inventory->uuid }}" data-item-url="{{ route('inventories.items.store', $inventory->uuid) }}" data-completed="{{ $inventory->isCompleted() ? '1' : '0' }}">
-    <nav><a href="{{ route('labels.index') }}">Etiquettes</a><a class="active" href="{{ route('inventories.index') }}">Inventaire</a></nav>
+    <nav class="app-nav" aria-label="Navigation principale"><a class="app-nav-link" href="{{ route('labels.index') }}">Etiquettes</a><a class="app-nav-link active" href="{{ route('inventories.index') }}">Inventaire</a></nav>
     <div class="top">
         <div><h1>{{ $inventory->name }}</h1><p class="meta">{{ $inventory->zone ?: 'Zone non renseignee' }} · <span id="status">{{ $inventory->isCompleted() ? 'Termine' : 'En cours' }}</span></p></div>
         <div class="toolbar">
