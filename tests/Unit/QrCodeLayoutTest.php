@@ -73,6 +73,20 @@ final class QrCodeLayoutTest extends TestCase
         }
     }
 
+    public function test_70x37_representative_qr_is_reduced_to_about_24mm_without_compromising_scan_quality(): void
+    {
+        $qr = (new QrCodeLayout)->calculate(
+            '6ROULEMENT-278',
+            (new A4LabelPresetCatalog)->layout('70x37'),
+            0,
+        );
+
+        $this->assertLessThanOrEqual(24.0, $qr['totalSizeMm']);
+        $this->assertGreaterThanOrEqual(QrCodeLayout::RECOMMENDED_MODULE_MM, $qr['moduleMm']);
+        $this->assertFalse($qr['compact']);
+        $this->assertSame($qr['matrixModules'] + (2 * QrCodeLayout::QUIET_ZONE_MODULES), $qr['totalModules']);
+    }
+
     public function test_longer_representative_value_uses_the_same_actual_matrix_policy(): void
     {
         $qr = (new QrCodeLayout)->calculate('6SHN142638252891', (new A4LabelPresetCatalog)->layout('70x37'), 0);

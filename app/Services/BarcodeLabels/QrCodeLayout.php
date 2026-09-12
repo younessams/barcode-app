@@ -12,11 +12,19 @@ final class QrCodeLayout
 
     public const RECOMMENDED_MODULE_MM = 0.50;
 
+    private const PRESET_70X37_TARGET_QR_MM = 24.0;
+
     private const PRESET_70X37_ROW_ALIGNMENT_MM = 0.125;
 
     private const PRESET_70X37_LOWER_ROW_LIFT_MM = 1.50;
 
     private const PRESET_70X37_TEXT_GAP_REDUCTION_MM = 0.15;
+
+    private const PRESET_70X37_HORIZONTAL_OFFSET_MM = 0.00;
+
+    private const PRESET_70X37_VERTICAL_DROP_MM = 1.00;
+
+    private const PRESET_70X37_COLUMN_DROP_MM = 1.20;
 
     /** @return array{matrixModules:int, totalModules:int, moduleMm:float, totalSizeMm:float, xMm:float, yMm:float, textXMm:float, textFontPt:float, textGapMm:float, textHeightMm:float, compact:bool} */
     public function calculate(string $value, array $layout, int $slotIndex): array
@@ -33,6 +41,21 @@ final class QrCodeLayout
             $preset['labelHeightMm'] - $safeTopMm - $safeBottomMm - $text['heightMm'] - $text['gapMm'],
         );
         $totalModules = $matrix['modules'] + (2 * self::QUIET_ZONE_MODULES);
+        $is70x37 = ($layout['presetId'] ?? null) === '70x37';
+
+        if ($is70x37) {
+            /*
+             * Keep the common 70x37 QR visually compact (~24 mm), but never
+             * force a dense QR below the recommended 0.50 mm module size when
+             * the physical label has enough room to preserve that quality.
+             */
+            $recommendedSizeMm = $totalModules * self::RECOMMENDED_MODULE_MM;
+            $maxSizeMm = min(
+                $maxSizeMm,
+                max(self::PRESET_70X37_TARGET_QR_MM, $recommendedSizeMm),
+            );
+        }
+
         $moduleMm = floor(($maxSizeMm / $totalModules) * 1000) / 1000;
 
         if ($moduleMm < self::MIN_MODULE_MM) {
@@ -41,20 +64,23 @@ final class QrCodeLayout
 
         $totalSizeMm = round($moduleMm * $totalModules, 3);
         $row = intdiv($slotIndex, (int) $guides['columns']);
-        $is70x37 = ($layout['presetId'] ?? null) === '70x37';
+        $column = $slotIndex % (int) $guides['columns'];
         $rowAlignmentMm = $is70x37 ? ($row * self::PRESET_70X37_ROW_ALIGNMENT_MM) : 0.0;
         $lowerRowLiftMm = $is70x37 && $row > 0 ? self::PRESET_70X37_LOWER_ROW_LIFT_MM : 0.0;
         $textGapMm = $is70x37
             ? max(0.1, round($text['gapMm'] - self::PRESET_70X37_TEXT_GAP_REDUCTION_MM, 3))
             : $text['gapMm'];
+        $horizontalOffsetMm = $is70x37 ? self::PRESET_70X37_HORIZONTAL_OFFSET_MM : 0.0;
+        $verticalDropMm = $is70x37 ? self::PRESET_70X37_VERTICAL_DROP_MM : 0.0;
+        $columnDropMm = $is70x37 ? ($column * self::PRESET_70X37_COLUMN_DROP_MM) : 0.0;
 
         return [
             'matrixModules' => $matrix['modules'],
             'totalModules' => $totalModules,
             'moduleMm' => $moduleMm,
             'totalSizeMm' => $totalSizeMm,
-            'xMm' => round($preset['xMm'] + (($preset['labelWidthMm'] - $totalSizeMm) / 2), 3),
-            'yMm' => round($preset['yMm'] + $safeTopMm - $rowAlignmentMm - $lowerRowLiftMm, 3),
+            'xMm' => round($preset['xMm'] + (($preset['labelWidthMm'] - $totalSizeMm) / 2) + $horizontalOffsetMm, 3),
+            'yMm' => round($preset['yMm'] + $safeTopMm - $rowAlignmentMm - $lowerRowLiftMm + $verticalDropMm + $columnDropMm, 3),
             'textXMm' => round($preset['xMm'], 3),
             'textFontPt' => $text['fontPt'],
             'textGapMm' => $textGapMm,

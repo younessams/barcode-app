@@ -98,7 +98,12 @@ function createBarcodePreview(left, top, preset, scale) {
 }
 
 function createQrPreview(left, top, preset, scale) {
-    const sizeMm = Math.min(preset.labelWidthMm - 2, preset.labelHeightMm - 1 - preset.barcode.textHeightMm - preset.barcode.textGapMm);
+    let sizeMm = Math.min(preset.labelWidthMm - 2, preset.labelHeightMm - 1 - preset.barcode.textHeightMm - preset.barcode.textGapMm);
+
+    if (preset.id === '70x37') {
+        sizeMm = Math.min(sizeMm, 24);
+    }
+
     const sizePx = sizeMm * scale;
     const qr = document.createElement('div');
     qr.className = 'qr-preview';
