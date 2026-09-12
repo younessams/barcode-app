@@ -17,3 +17,7 @@ Route::post('/inventaire/{uuid}/reopen', [InventoryController::class, 'reopen'])
 Route::post('/inventaire/{uuid}/items', [InventoryController::class, 'storeItem'])->name('inventories.items.store');
 Route::patch('/inventaire/{uuid}/items/{itemUuid}', [InventoryController::class, 'updateItem'])->name('inventories.items.update');
 Route::delete('/inventaire/{uuid}/items/{itemUuid}', [InventoryController::class, 'destroyItem'])->name('inventories.items.destroy');
+
+Route::get('/catalogue', [\App\Http\Controllers\ManualCatalogueController::class, 'index'])->name('catalogue.index');
+Route::post('/catalogue', [\App\Http\Controllers\ManualCatalogueController::class, 'generate'])->name('catalogue.generate');
+Route::get('/catalogue/{token}.pdf', [\App\Http\Controllers\ManualCatalogueController::class, 'pdf'])->name('catalogue.pdf');
