@@ -675,7 +675,7 @@
 </div>
 
 <div class="app" data-inventory="{{ $inventory->uuid }}" data-item-url="{{ route('inventories.items.store', $inventory->uuid) }}" data-completed="{{ $inventory->isCompleted() ? '1' : '0' }}">
-    <nav class="app-nav" aria-label="Navigation principale"><a class="app-nav-link" href="{{ route('labels.index') }}">Etiquettes</a><a class="app-nav-link active" href="{{ route('inventories.index') }}">Inventaire</a></nav>
+    <nav class="app-nav" aria-label="Navigation principale"><a class="app-nav-link" href="{{ route('labels.index') }}">Etiquettes</a><a class="app-nav-link active" href="{{ route('inventories.index') }}">Inventaire</a><a class="app-nav-link" href="{{ route('catalogue.index') }}">Catalogue QR</a></nav>
     <div class="top">
         <div><h1>{{ $inventory->name }}</h1><p class="meta">{{ $inventory->zone ?: 'Zone non renseignee' }} · <span id="status">{{ $inventory->isCompleted() ? 'Termine' : 'En cours' }}</span></p></div>
         <div class="toolbar">

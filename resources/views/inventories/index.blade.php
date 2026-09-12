@@ -34,7 +34,7 @@
     </style>
 </head>
 <body><div class="app">
-    <nav class="app-nav" aria-label="Navigation principale"><a class="app-nav-link" href="{{ route('labels.index') }}">Etiquettes</a><a class="app-nav-link active" href="{{ route('inventories.index') }}">Inventaire</a></nav>
+    <nav class="app-nav" aria-label="Navigation principale"><a class="app-nav-link" href="{{ route('labels.index') }}">Etiquettes</a><a class="app-nav-link active" href="{{ route('inventories.index') }}">Inventaire</a><a class="app-nav-link" href="{{ route('catalogue.index') }}">Catalogue QR</a></nav>
     <h1>Inventaires</h1><p class="subtitle">Comptez les articles localement et exportez le resultat quand vous avez termine.</p>
     <div class="layout">
         <section><h2>Creer un inventaire</h2>@error('name')<div class="alert">{{ $message }}</div>@enderror<form method="post" action="{{ route('inventories.store') }}">@csrf<label for="name">Nom</label><input id="name" name="name" required maxlength="120" value="{{ old('name') }}"><label for="zone">Zone <span style="font-weight:400">(optionnel)</span></label><input id="zone" name="zone" maxlength="120" value="{{ old('zone') }}"><button type="submit">Commencer l'inventaire</button></form></section>

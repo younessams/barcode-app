@@ -38,7 +38,7 @@
 </head>
 <body>
 <div class="app" data-headers-url="{{ route('labels.headers') }}">
-    <nav class="app-nav" aria-label="Navigation principale"><a class="app-nav-link active" href="{{ route('labels.index') }}">Etiquettes</a><a class="app-nav-link" href="{{ route('inventories.index') }}">Inventaire</a></nav>
+    <nav class="app-nav" aria-label="Navigation principale"><a class="app-nav-link active" href="{{ route('labels.index') }}">Etiquettes</a><a class="app-nav-link" href="{{ route('inventories.index') }}">Inventaire</a><a class="app-nav-link" href="{{ route('catalogue.index') }}">Catalogue QR</a></nav>
     <header><h1>Generateur d'etiquettes</h1><p class="subtitle">Code 128 vectoriel sur page A4 prete a imprimer.</p></header>
     <main>
         <section class="panel"><div class="panel-body">
