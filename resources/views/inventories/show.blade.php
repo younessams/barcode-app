@@ -240,7 +240,15 @@
             transform: scale(.94);
         }        .camera-frame { position: relative; background: #101820; border-radius: 6px; overflow: hidden; aspect-ratio: 16 / 10; max-height: 42vh; margin-top: 10px; }
         #camera-video { display: block; width: 100%; height: 100%; object-fit: cover; }
-        .scan-guide { position: absolute; inset: 20% 12%; border: 2px solid #8fd3ff; border-radius: 8px; pointer-events: none; }
+        .scan-guide {
+            position: absolute;
+            z-index: 2;
+            inset: 20% 12%;
+            border: 2px solid #8fd3ff;
+            border-radius: 8px;
+            box-shadow: 0 0 0 999px rgba(7, 13, 18, .28);
+            pointer-events: none;
+        }
         .scan-line {
             position: absolute;
             z-index: 3;
@@ -695,7 +703,7 @@
     @if (!$inventory->isCompleted())
         <section class="scanner" aria-labelledby="scanner-title">
             <div class="scanner-heading"><h2 id="scanner-title">Scanner un article</h2><button id="torch-toggle" class="torch-button" type="button" aria-label="Allumer le flash" aria-pressed="false" title="Allumer le flash" hidden><i data-lucide="Flashlight"></i></button></div>
-            <div class="camera-frame"><video id="camera-video" playsinline muted aria-label="Apercu de la camera"></video><div class="scan-guide"></div><div class="scan-line" aria-hidden="true"></div><p id="camera-status" class="camera-status">Placez le QR code ou le code-barres devant la camera.</p></div>
+            <div class="camera-frame"><video id="camera-video" playsinline muted aria-label="Apercu de la camera"></video><div class="scan-guide"></div><div class="scan-line" aria-hidden="true"></div><p id="camera-status" class="camera-status">Placez le QR code ou le code-barres dans le cadre bleu.</p></div>
             <div class="action-area"><div class="camera-actions"><button id="start-camera" class="icon-button" type="button" aria-label="Demarrer la camera" title="Demarrer la camera"><i data-lucide="Camera"></i></button><button id="retry-camera" class="icon-button secondary" type="button" aria-label="Reessayer la camera" title="Reessayer" hidden><i data-lucide="RefreshCw"></i></button><button id="manual-toggle" class="manual-link" type="button" aria-expanded="false"><i data-lucide="Keyboard"></i><span>Saisir le code article manuellement</span></button></div></div>
             <div id="manual-entry" hidden><form id="item-form"><label class="quantity-label" for="code_article">Code Article</label><div class="manual-code-row"><input id="code_article" name="code_article" autocomplete="off" required><button class="button secondary" type="submit">Continuer</button></div></form></div>
             <div id="detected-panel" class="detected quantity-modal-overlay" hidden>

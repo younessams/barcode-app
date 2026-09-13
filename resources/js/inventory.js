@@ -4,6 +4,7 @@ import { Camera, CheckCircle2, ChevronDown, CircleAlert, createIcons, Flashlight
 const app = document.querySelector('.app');
 const video = document.querySelector('#camera-video');
 const cameraFrame = document.querySelector('.camera-frame');
+const scanGuide = document.querySelector('.scan-guide');
 const torchButton = document.querySelector('#torch-toggle');
 const form = document.querySelector('#item-form');
 const codeInput = document.querySelector('#code_article');
@@ -31,7 +32,13 @@ let scannerState = READY;
 let mediaStream = null;
 let nativeDetector = null;
 let nativeFrame = 0;
-let zxingControls = null;
+let zxingTimer = null;
+let zxingReader = null;
+let zxingCanvas = null;
+let zxingBusy = false;
+let scanCandidateCode = null;
+let scanCandidateCount = 0;
+let scanCandidateSeenAt = 0;
 let pendingCode = null;
 let pendingDuplicate = null;
 let freezeTimer = null;
@@ -43,6 +50,10 @@ let toastFrame = null;
 let quantityFocusTimer = null;
 const SCAN_FREEZE_MS = 1800;
 const TOAST_DURATION_MS = 2800;
+const SCAN_CONFIRMATIONS = 2;
+const SCAN_CONFIRM_WINDOW_MS = 650;
+const SCAN_MIN_OVERLAP = 0.45;
+const ZXING_SCAN_DELAY_MS = 80;
 
 createIcons({ icons: { Camera, ChevronDown, Keyboard, Minus, Pencil, Plus, RefreshCw, Save, Trash2, X } });
 
@@ -306,6 +317,43 @@ async function configureTorch() {
     }
 }
 
+
+async function configureCameraFocus() {
+    const track = getVideoTrack();
+
+    if (
+        !track
+        || typeof track.getCapabilities !== 'function'
+    ) {
+        return;
+    }
+
+    try {
+        const capabilities = track.getCapabilities();
+
+        const focusModes = Array.isArray(
+            capabilities?.focusMode
+        )
+            ? capabilities.focusMode
+            : [];
+
+        if (!focusModes.includes('continuous')) {
+            return;
+        }
+
+        await track.applyConstraints({
+            advanced: [
+                {
+                    focusMode: 'continuous',
+                },
+            ],
+        });
+    } catch (error) {
+        // Autofocus enhancement is optional.
+        // Never block scanning if a device rejects it.
+    }
+}
+
 async function toggleTorch() {
     if (!torchSupported) return;
 
@@ -350,8 +398,14 @@ function updateSummary(payload) {
 function stopDecoder() {
     if (nativeFrame) cancelAnimationFrame(nativeFrame);
     nativeFrame = 0;
-    if (zxingControls) zxingControls.stop();
-    zxingControls = null;
+
+    if (zxingTimer) {
+        clearTimeout(zxingTimer);
+        zxingTimer = null;
+    }
+
+    zxingBusy = false;
+    resetScanCandidate();
 }
 
 function stopCamera() {
@@ -362,6 +416,373 @@ function stopCamera() {
     mediaStream = null;
     if (video) video.srcObject = null;
     if (cameraFrame) cameraFrame.classList.remove('camera-active');
+}
+
+
+function resetScanCandidate() {
+    scanCandidateCode = null;
+    scanCandidateCount = 0;
+    scanCandidateSeenAt = 0;
+}
+
+function confirmScanCandidate(code) {
+    const now = performance.now();
+
+    if (
+        scanCandidateCode === code
+        && now - scanCandidateSeenAt <= SCAN_CONFIRM_WINDOW_MS
+    ) {
+        scanCandidateCount += 1;
+    } else {
+        scanCandidateCode = code;
+        scanCandidateCount = 1;
+    }
+
+    scanCandidateSeenAt = now;
+
+    if (scanCandidateCount < SCAN_CONFIRMATIONS) {
+        return false;
+    }
+
+    resetScanCandidate();
+
+    return true;
+}
+
+function expireScanCandidate() {
+    if (
+        scanCandidateSeenAt
+        && performance.now() - scanCandidateSeenAt > SCAN_CONFIRM_WINDOW_MS
+    ) {
+        resetScanCandidate();
+    }
+}
+
+function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+}
+
+function getScanRegionInVideoPixels() {
+    if (
+        !video
+        || !scanGuide
+        || !video.videoWidth
+        || !video.videoHeight
+    ) {
+        return null;
+    }
+
+    const videoRect = video.getBoundingClientRect();
+    const guideRect = scanGuide.getBoundingClientRect();
+
+    if (!videoRect.width || !videoRect.height) {
+        return null;
+    }
+
+    /*
+     * The preview uses object-fit: cover.
+     * Map the visible blue guide back to the camera's original pixels,
+     * including the parts cropped by object-fit.
+     */
+    const scale = Math.max(
+        videoRect.width / video.videoWidth,
+        videoRect.height / video.videoHeight
+    );
+
+    const renderedWidth = video.videoWidth * scale;
+    const renderedHeight = video.videoHeight * scale;
+
+    const offsetX = (videoRect.width - renderedWidth) / 2;
+    const offsetY = (videoRect.height - renderedHeight) / 2;
+
+    const left = clamp(
+        (guideRect.left - videoRect.left - offsetX) / scale,
+        0,
+        video.videoWidth
+    );
+
+    const top = clamp(
+        (guideRect.top - videoRect.top - offsetY) / scale,
+        0,
+        video.videoHeight
+    );
+
+    const right = clamp(
+        (guideRect.right - videoRect.left - offsetX) / scale,
+        0,
+        video.videoWidth
+    );
+
+    const bottom = clamp(
+        (guideRect.bottom - videoRect.top - offsetY) / scale,
+        0,
+        video.videoHeight
+    );
+
+    const width = right - left;
+    const height = bottom - top;
+
+    if (width < 10 || height < 10) {
+        return null;
+    }
+
+    return {
+        left,
+        top,
+        right,
+        bottom,
+        width,
+        height,
+        centerX: left + (width / 2),
+        centerY: top + (height / 2),
+    };
+}
+
+function getNativeBarcodeBox(result) {
+    const box = result?.boundingBox;
+
+    if (box && box.width > 0 && box.height > 0) {
+        return {
+            left: box.x,
+            top: box.y,
+            right: box.x + box.width,
+            bottom: box.y + box.height,
+            width: box.width,
+            height: box.height,
+        };
+    }
+
+    const points = Array.isArray(result?.cornerPoints)
+        ? result.cornerPoints
+        : [];
+
+    if (!points.length) {
+        return null;
+    }
+
+    const xs = points.map((point) => Number(point.x));
+    const ys = points.map((point) => Number(point.y));
+
+    const left = Math.min(...xs);
+    const top = Math.min(...ys);
+    const right = Math.max(...xs);
+    const bottom = Math.max(...ys);
+
+    if (
+        !Number.isFinite(left)
+        || !Number.isFinite(top)
+        || !Number.isFinite(right)
+        || !Number.isFinite(bottom)
+        || right <= left
+        || bottom <= top
+    ) {
+        return null;
+    }
+
+    return {
+        left,
+        top,
+        right,
+        bottom,
+        width: right - left,
+        height: bottom - top,
+    };
+}
+
+function getBoxOverlapRatio(box, region) {
+    const left = Math.max(box.left, region.left);
+    const top = Math.max(box.top, region.top);
+    const right = Math.min(box.right, region.right);
+    const bottom = Math.min(box.bottom, region.bottom);
+
+    const intersectionWidth = Math.max(0, right - left);
+    const intersectionHeight = Math.max(0, bottom - top);
+    const intersectionArea = intersectionWidth * intersectionHeight;
+    const boxArea = Math.max(1, box.width * box.height);
+
+    return intersectionArea / boxArea;
+}
+
+function pickBestNativeCandidate(results) {
+    const region = getScanRegionInVideoPixels();
+
+    if (!region) {
+        return null;
+    }
+
+    const candidates = [];
+
+    for (const result of results) {
+        const code = String(result?.rawValue ?? '');
+
+        if (!code) {
+            continue;
+        }
+
+        const box = getNativeBarcodeBox(result);
+
+        if (!box) {
+            continue;
+        }
+
+        const centerX = box.left + (box.width / 2);
+        const centerY = box.top + (box.height / 2);
+
+        const centerInside = (
+            centerX >= region.left
+            && centerX <= region.right
+            && centerY >= region.top
+            && centerY <= region.bottom
+        );
+
+        if (!centerInside) {
+            continue;
+        }
+
+        const overlap = getBoxOverlapRatio(box, region);
+
+        if (overlap < SCAN_MIN_OVERLAP) {
+            continue;
+        }
+
+        const distanceX = (
+            centerX - region.centerX
+        ) / Math.max(1, region.width / 2);
+
+        const distanceY = (
+            centerY - region.centerY
+        ) / Math.max(1, region.height / 2);
+
+        const centerDistance = Math.hypot(
+            distanceX,
+            distanceY
+        );
+
+        candidates.push({
+            code,
+            score: (overlap * 4) - centerDistance,
+        });
+    }
+
+    candidates.sort((a, b) => b.score - a.score);
+
+    return candidates[0] ?? null;
+}
+
+function ensureZxingCanvas() {
+    if (!zxingCanvas) {
+        zxingCanvas = document.createElement('canvas');
+    }
+
+    return zxingCanvas;
+}
+
+function scheduleZxingScan(delay = ZXING_SCAN_DELAY_MS) {
+    if (
+        scannerState !== READY
+        || !mediaStream
+        || !zxingReader
+    ) {
+        return;
+    }
+
+    if (zxingTimer) {
+        clearTimeout(zxingTimer);
+    }
+
+    zxingTimer = window.setTimeout(() => {
+        zxingTimer = null;
+        zxingScan();
+    }, delay);
+}
+
+function zxingScan() {
+    if (
+        scannerState !== READY
+        || !mediaStream
+        || !zxingReader
+        || !video
+        || video.readyState < 2
+    ) {
+        return;
+    }
+
+    if (zxingBusy) {
+        scheduleZxingScan();
+        return;
+    }
+
+    const region = getScanRegionInVideoPixels();
+
+    if (!region) {
+        scheduleZxingScan();
+        return;
+    }
+
+    zxingBusy = true;
+
+    try {
+        const canvas = ensureZxingCanvas();
+
+        const width = Math.max(
+            1,
+            Math.round(region.width)
+        );
+
+        const height = Math.max(
+            1,
+            Math.round(region.height)
+        );
+
+        if (
+            canvas.width !== width
+            || canvas.height !== height
+        ) {
+            canvas.width = width;
+            canvas.height = height;
+        }
+
+        const context = canvas.getContext(
+            '2d',
+            {
+                alpha: false,
+                willReadFrequently: true,
+            }
+        );
+
+        if (!context) {
+            return;
+        }
+
+        context.drawImage(
+            video,
+            region.left,
+            region.top,
+            region.width,
+            region.height,
+            0,
+            0,
+            width,
+            height
+        );
+
+        const result = zxingReader.decodeFromCanvas(canvas);
+
+        if (
+            result
+            && confirmScanCandidate(result.getText())
+        ) {
+            showDetected(result.getText(), 'camera');
+        }
+    } catch (error) {
+        expireScanCandidate();
+    } finally {
+        zxingBusy = false;
+    }
+
+    if (scannerState === READY) {
+        scheduleZxingScan();
+    }
 }
 
 function showDetected(code, source = 'manual') {
@@ -389,36 +810,78 @@ function showDetected(code, source = 'manual') {
 }
 
 async function nativeScan() {
-    if (scannerState !== READY || !nativeDetector || !video || video.readyState < 2) return;
+    if (
+        scannerState !== READY
+        || !nativeDetector
+        || !video
+        || video.readyState < 2
+    ) {
+        return;
+    }
+
     try {
         const results = await nativeDetector.detect(video);
-        if (results.length) showDetected(results[0].rawValue, 'camera');
+        const candidate = pickBestNativeCandidate(results);
+
+        if (candidate) {
+            if (confirmScanCandidate(candidate.code)) {
+                showDetected(candidate.code, 'camera');
+            }
+        } else {
+            expireScanCandidate();
+        }
     } catch (error) {
         // Camera frames can be unavailable briefly while mobile Chrome rotates or focuses.
     }
-    if (scannerState === READY) nativeFrame = requestAnimationFrame(nativeScan);
+
+    if (scannerState === READY) {
+        nativeFrame = requestAnimationFrame(nativeScan);
+    }
 }
 
 async function startDecoder() {
     stopDecoder();
+
+    zxingReader = null;
+    nativeDetector = null;
+
     try {
-        const supported = window.BarcodeDetector && await window.BarcodeDetector.getSupportedFormats();
-        if (supported?.includes('qr_code') && supported.includes('code_128')) {
-            nativeDetector = new window.BarcodeDetector({ formats: ['qr_code', 'code_128'] });
-            setCameraStatus('Pret a scanner un QR code ou un code-barres.');
+        const supported = (
+            window.BarcodeDetector
+            && await window.BarcodeDetector.getSupportedFormats()
+        );
+
+        if (
+            supported?.includes('qr_code')
+            && supported.includes('code_128')
+        ) {
+            nativeDetector = new window.BarcodeDetector({
+                formats: ['qr_code', 'code_128'],
+            });
+
+            setCameraStatus(
+                'Cadrez le code dans la zone bleue.'
+            );
+
             nativeFrame = requestAnimationFrame(nativeScan);
+
             return;
         }
     } catch (error) {
         nativeDetector = null;
     }
 
-    nativeDetector = null;
-    const reader = new BrowserMultiFormatReader();
-    zxingControls = await reader.decodeFromVideoElementContinuously(video, (result) => {
-        if (result) showDetected(result.getText(), 'camera');
-    });
-    setCameraStatus('Pret a scanner un QR code ou un code-barres.');
+    /*
+     * ZXing fallback:
+     * decode only the real scan zone instead of the full video.
+     */
+    zxingReader = new BrowserMultiFormatReader();
+
+    setCameraStatus(
+        'Cadrez le code dans la zone bleue.'
+    );
+
+    scheduleZxingScan(0);
 }
 
 async function startCamera() {
@@ -433,10 +896,23 @@ async function startCamera() {
     retryButton.hidden = true;
     setCameraStatus('Demande d acces a la camera...');
     try {
-        mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                facingMode: { ideal: 'environment' },
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+            },
+            audio: false,
+        });
+
         video.srcObject = mediaStream;
         await video.play();
-        if (cameraFrame) cameraFrame.classList.add('camera-active');
+
+        if (cameraFrame) {
+            cameraFrame.classList.add('camera-active');
+        }
+
+        await configureCameraFocus();
         await configureTorch();
         await startDecoder();
     } catch (error) {
