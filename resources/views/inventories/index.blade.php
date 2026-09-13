@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Inventaires</title>
-    @vite(['resources/css/app.css'])
+    @vite(['resources/css/app.css', 'resources/js/inventory.js'])
     <style>
         :root { color: #16202a; background: #f4f6f8; }
         * { box-sizing: border-box; }
@@ -36,8 +36,40 @@
 <body><div class="app">
     <nav class="app-nav" aria-label="Navigation principale"><a class="app-nav-link" href="{{ route('labels.index') }}">Etiquettes</a><a class="app-nav-link active" href="{{ route('inventories.index') }}">Inventaire</a><a class="app-nav-link" href="{{ route('catalogue.index') }}">Catalogue QR</a></nav>
     <h1>Inventaires</h1><p class="subtitle">Comptez les articles localement et exportez le resultat quand vous avez termine.</p>
-    <div class="layout">
-        <section><h2>Creer un inventaire</h2>@error('name')<div class="alert">{{ $message }}</div>@enderror<form method="post" action="{{ route('inventories.store') }}">@csrf<label for="name">Nom</label><input id="name" name="name" required maxlength="120" value="{{ old('name') }}"><label for="zone">Zone <span style="font-weight:400">(optionnel)</span></label><input id="zone" name="zone" maxlength="120" value="{{ old('zone') }}"><button type="submit">Commencer l'inventaire</button></form></section>
-        <section><h2>Inventaires existants</h2>@if ($inventories->isEmpty())<p class="empty">Aucun inventaire pour le moment.</p>@else<div class="table-wrap"><table><thead><tr><th>Nom</th><th>Zone</th><th>Statut</th><th>References</th><th>Total</th><th>Date</th><th></th></tr></thead><tbody>@foreach ($inventories as $inventory)<tr><td><strong>{{ $inventory->name }}</strong></td><td>{{ $inventory->zone ?: '-' }}</td><td><span class="status {{ $inventory->status }}">{{ $inventory->isCompleted() ? 'Termine' : 'En cours' }}</span></td><td>{{ $inventory->items_count }}</td><td>{{ $inventory->items_sum_quantity ?? 0 }}</td><td>{{ $inventory->started_at->format('d/m/Y') }}</td><td><div class="actions"><a class="button secondary" href="{{ route('inventories.show', $inventory->uuid) }}">{{ $inventory->isCompleted() ? 'Consulter' : 'Continuer' }}</a><a class="button secondary" href="{{ route('inventories.export', $inventory->uuid) }}">Excel</a></div></td></tr>@endforeach</tbody></table></div>@endif</section>
+    <div id="inventory-index-app">
+        <div class="layout">
+            <section><h2>Creer un inventaire</h2>@error('name')<div class="alert">{{ $message }}</div>@enderror<form method="post" action="{{ route('inventories.store') }}">@csrf<label for="name">Nom</label><input id="name" name="name" required maxlength="120" value="{{ old('name') }}"><label for="zone">Zone <span style="font-weight:400">(optionnel)</span></label><input id="zone" name="zone" maxlength="120" value="{{ old('zone') }}"><button type="submit">Commencer l'inventaire</button></form></section>
+            <section><h2>Inventaires existants</h2>@if ($inventories->isEmpty())<p class="empty">Aucun inventaire pour le moment.</p>@else<div class="table-wrap"><table><thead><tr><th>Nom</th><th>Zone</th><th>Statut</th><th>References</th><th>Total</th><th>Date</th><th></th></tr></thead><tbody>@foreach ($inventories as $inventory)<tr><td><strong>{{ $inventory->name }}</strong></td><td>{{ $inventory->zone ?: '-' }}</td><td><span class="status {{ $inventory->status }}">{{ $inventory->isCompleted() ? 'Termine' : 'En cours' }}</span></td><td>{{ $inventory->items_count }}</td><td>{{ $inventory->items_sum_quantity ?? 0 }}</td><td>{{ $inventory->started_at->format('d/m/Y') }}</td><td><div class="actions"><a class="button secondary" href="{{ route('inventories.show', $inventory->uuid) }}">{{ $inventory->isCompleted() ? 'Consulter' : 'Continuer' }}</a><a class="button secondary" href="{{ route('inventories.export', $inventory->uuid) }}">Excel</a></div></td></tr>@endforeach</tbody></table></div>@endif</section>
+        </div>
     </div>
-</div></body></html>
+</div>
+@php
+    $inventoryIndexPage = [
+        'storeUrl' => route('inventories.store'),
+        'csrfToken' => csrf_token(),
+        'old' => [
+            'name' => old('name', ''),
+            'zone' => old('zone', ''),
+        ],
+        'errors' => [
+            'name' => $errors->first('name') ?: '',
+        ],
+        'inventories' => $inventories->map(fn ($inventory) => [
+            'uuid' => $inventory->uuid,
+            'name' => $inventory->name,
+            'zone' => $inventory->zone,
+            'status' => $inventory->status,
+            'statusText' => $inventory->isCompleted() ? 'Termine' : 'En cours',
+            'isCompleted' => $inventory->isCompleted(),
+            'itemsCount' => $inventory->items_count,
+            'totalQuantity' => $inventory->items_sum_quantity ?? 0,
+            'startedAt' => $inventory->started_at->format('d/m/Y'),
+            'showUrl' => route('inventories.show', $inventory->uuid),
+            'exportUrl' => route('inventories.export', $inventory->uuid),
+        ])->values()->all(),
+    ];
+@endphp
+<script>
+    window.InventoryIndexPage = {{ Illuminate\Support\Js::from($inventoryIndexPage) }};
+</script>
+</body></html>

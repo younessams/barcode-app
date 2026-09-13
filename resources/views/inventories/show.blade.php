@@ -672,6 +672,7 @@
     </style>
 </head>
 <body>
+<div id="inventory-show-app">
 <div id="action-toast" class="action-toast success" role="status" aria-live="polite" aria-atomic="true">
     <div class="action-toast-content">
         <span id="action-toast-icon" class="action-toast-icon" aria-hidden="true"></span>
@@ -758,5 +759,34 @@
 
     <details id="items-section" class="items"><summary><i data-lucide="ChevronDown"></i>Voir les articles comptes ({{ $inventory->items->count() }})</summary><div class="items-toolbar"><h2>Articles comptes</h2><input id="search" type="search" placeholder="Rechercher un code" aria-label="Rechercher un code"></div><div class="table-wrap"><table><thead><tr><th>Code Article</th><th>Quantite</th><th>QR</th>@if (!$inventory->isCompleted())<th>Actions</th>@endif</tr></thead><tbody id="items-body">@foreach ($inventory->items as $item)<tr data-code="{{ strtolower($item->code_article) }}" data-item="{{ $item->uuid }}"><td>{{ $item->code_article }}</td><td class="quantity">{{ $item->quantity }}</td><td>Disponible a l'export</td>@if (!$inventory->isCompleted())<td><div class="actions item-actions"><button class="item-action-button edit-item" type="button" aria-label="Modifier l article" title="Modifier"><i data-lucide="Pencil"></i></button><button class="item-action-button delete-item" type="button" aria-label="Supprimer l article" title="Supprimer"><i data-lucide="Trash2"></i></button></div></td>@endif</tr>@endforeach</tbody></table></div><p id="empty-items" class="empty" @if ($inventory->items->isNotEmpty()) hidden @endif>Aucun article compte.</p></details>
 </div>
+</div>
+@php
+    $inventoryShowPage = [
+        'csrfToken' => csrf_token(),
+        'inventory' => [
+            'uuid' => $inventory->uuid,
+            'name' => $inventory->name,
+            'zone' => $inventory->zone,
+            'completed' => $inventory->isCompleted(),
+        ],
+        'urls' => [
+            'labelsIndex' => route('labels.index'),
+            'inventoryIndex' => route('inventories.index'),
+            'catalogueIndex' => route('catalogue.index'),
+            'itemStore' => route('inventories.items.store', $inventory->uuid),
+            'export' => route('inventories.export', $inventory->uuid),
+            'complete' => route('inventories.complete', $inventory->uuid),
+            'reopen' => route('inventories.reopen', $inventory->uuid),
+        ],
+        'initialItems' => $inventory->items->map(fn ($item) => [
+            'uuid' => $item->uuid,
+            'code_article' => $item->code_article,
+            'quantity' => $item->quantity,
+        ])->values()->all(),
+    ];
+@endphp
+<script>
+    window.InventoryShowPage = {{ Illuminate\Support\Js::from($inventoryShowPage) }};
+</script>
 </body>
 </html>
