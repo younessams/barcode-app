@@ -37,28 +37,34 @@
     </style>
 </head>
 <body>
-<div class="app" data-headers-url="{{ route('labels.headers') }}">
+<div class="app">
     <nav class="app-nav" aria-label="Navigation principale"><a class="app-nav-link active" href="{{ route('labels.index') }}">Etiquettes</a><a class="app-nav-link" href="{{ route('inventories.index') }}">Inventaire</a><a class="app-nav-link" href="{{ route('catalogue.index') }}">Catalogue QR</a></nav>
     <header><h1>Generateur d'etiquettes</h1><p class="subtitle">Code 128 vectoriel sur page A4 prete a imprimer.</p></header>
-    <main>
-        <section class="panel"><div class="panel-body">
-            @foreach (['excel_file', 'excel_column', 'preset_id'] as $field)
-                @error($field)<div class="alert" role="alert"><i data-lucide="TriangleAlert"></i><div>{{ $message }}</div></div>@enderror
-            @endforeach
-            @if (session('result'))
-                <section class="result"><div><p class="result-title">PDF genere avec succes</p><p class="result-metrics">{{ number_format(session('result.labels'), 0, ',', ' ') }} etiquettes &middot; {{ session('result.pages') }} pages A4</p></div><div class="actions"><a class="action-primary" href="{{ route('labels.pdf', ['token' => session('result.token'), 'download' => 1]) }}"><i data-lucide="Download"></i>Telecharger</a><a class="action-secondary" href="{{ route('labels.pdf', ['token' => session('result.token')]) }}" target="_blank" rel="noopener"><i data-lucide="Printer"></i>Imprimer</a></div></section>
-            @endif
-            <form id="upload-form" action="{{ route('labels.generate') }}" method="post" enctype="multipart/form-data">@csrf
-                <div class="section" style="border-top:0;padding-top:0;margin-top:0"><h2>Fichier Excel</h2><label id="dropzone" class="dropzone" for="excel_file"><input id="excel_file" class="file-input" name="excel_file" type="file" accept=".xlsx,.xls" required><span class="upload-state"><span class="icon-disc"><i data-lucide="FileSpreadsheet"></i></span><span>Glissez-deposez votre fichier</span><span id="choose-file-button" class="secondary-button" role="button" tabindex="0"> <i data-lucide="Upload"></i>Choisir un fichier</span><span class="field-help">XLSX ou XLS</span></span><span class="selected-state"><strong id="file-name"></strong><span>Fichier pret</span><span id="change-file-button" class="secondary-button" role="button" tabindex="0">Modifier</span></span></label>
-                    <div class="field"><label for="excel_column">Colonne a convertir en code-barres</label><select id="excel_column" name="excel_column" required disabled data-old-value="{{ old('excel_column') }}"><option value="">Choisissez un fichier Excel</option></select><div class="field-help">SKU, Reference, Code article, N serie, N commande, Tracking...</div></div></div>
-                <div class="section"><h2>Format d'etiquette</h2><p class="preset-help">Les formats disponibles sont adaptes aux planches A4 pre-decoupees.</p><select id="preset-selector" name="preset_id" required>@foreach ($presets as $preset)<option value="{{ $preset['id'] }}" @selected($preset['default'])>{{ $preset['displayWidthMm'] }} x {{ $preset['displayHeightMm'] }} mm &middot; {{ $preset['labelsPerSheet'] }} / A4 &middot; {{ $preset['columns'] }}x{{ $preset['rows'] }}@if ($preset['recommended']) &middot; Recommande @endif</option>@endforeach</select><div class="metrics"><div class="metric">Etiquettes / page <strong id="metric-slots">24</strong></div><div class="metric">Zone etiquette <strong id="metric-size">70 x 37 mm</strong></div></div><p id="preset-warning" class="warning" hidden>Les valeurs longues peuvent etre plus compactes sur ce petit format.</p></div>
-                <div class="section"><h2>Type de code</h2><div class="code-types"><div class="code-type"><input id="code-type-code128" type="radio" name="code_type" value="code128" checked><label for="code-type-code128"><span class="code-type-title">Code-barres</span><span class="code-type-help">Code 128 · Lecteurs classiques</span></label></div><div class="code-type"><input id="code-type-qr" type="radio" name="code_type" value="qr"><label for="code-type-qr"><span class="code-type-title">QR Code</span><span class="code-type-help">Lecture rapide avec smartphone</span></label></div></div></div>
-                <button id="submit-button" class="primary-button" type="submit"><i data-lucide="Barcode"></i>Generer le PDF</button>
-            </form>
-        </div></section>
-        <section class="preview-panel"><div class="preview-head"><h2>Apercu A4</h2><span id="preview-mode" class="field-help">70 x 37 mm</span></div><div class="paper-wrap"><div id="a4-preview" class="a4-board" aria-label="Apercu de la page A4"></div></div></section>
-    </main>
+    <div id="barcode-labels-app"></div>
 </div>
-<script>window.BarcodePresets = @json($presets);</script>
+@php
+    $barcodeLabelsPage = [
+        'presets' => $presets,
+        'headersUrl' => route('labels.headers'),
+        'generateUrl' => route('labels.generate'),
+        'csrfToken' => csrf_token(),
+        'oldExcelColumn' => old('excel_column', ''),
+        'errors' => collect(['excel_file', 'excel_column', 'preset_id'])
+            ->map(fn ($field) => $errors->first($field))
+            ->filter()
+            ->values()
+            ->all(),
+        'result' => session('result') ? [
+            'labels' => session('result.labels'),
+            'labelsFormatted' => number_format(session('result.labels'), 0, ',', ' '),
+            'pages' => session('result.pages'),
+            'downloadUrl' => route('labels.pdf', ['token' => session('result.token'), 'download' => 1]),
+            'printUrl' => route('labels.pdf', ['token' => session('result.token')]),
+        ] : null,
+    ];
+@endphp
+<script>
+    window.BarcodeLabelsPage = {{ Illuminate\Support\Js::from($barcodeLabelsPage) }};
+</script>
 </body>
 </html>
