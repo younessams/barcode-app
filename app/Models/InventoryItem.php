@@ -10,7 +10,7 @@ final class InventoryItem extends Model
 {
     protected $fillable = ['inventory_session_id', 'code_article', 'quantity'];
 
-    protected $casts = ['quantity' => 'integer'];
+    protected $casts = ['quantity' => 'decimal:3'];
 
     protected static function booted(): void
     {

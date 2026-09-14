@@ -114,8 +114,11 @@ function focusQuantityInput() {
 
 function adjustQuantity(input, amount) {
     if (!input) return;
-    const value = Number.parseInt(input.value, 10) || 0;
-    input.value = String(Math.max(0, value + amount));
+
+    const value = Number(input.value.replace(',', '.')) || 0;
+    const nextValue = Math.max(0, Math.round((value + amount) * 1000) / 1000);
+
+    input.value = String(nextValue);
 }
 
 function setMessage(text, error = false) {
@@ -1049,11 +1052,18 @@ if (form) form.addEventListener('submit', (event) => {
 
 if (detectedQuantity) {
     detectedQuantity.addEventListener('input', () => {
-        const digits = detectedQuantity.value.replace(/[^\d]/g, '');
+        let value = detectedQuantity.value
+            .replace(',', '.')
+            .replace(/[^\d.]/g, '');
 
-        if (detectedQuantity.value !== digits) {
-            detectedQuantity.value = digits;
+        const dotIndex = value.indexOf('.');
+
+        if (dotIndex !== -1) {
+            value = value.slice(0, dotIndex + 1)
+                + value.slice(dotIndex + 1).replace(/\./g, '').slice(0, 3);
         }
+
+        detectedQuantity.value = value;
     });
 
     detectedQuantity.addEventListener('keydown', (event) => {

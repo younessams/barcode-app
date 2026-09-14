@@ -724,7 +724,7 @@
                                     <i data-lucide="Minus"></i>
                                 </button>
 
-                                <input id="detected-quantity" type="text" inputmode="numeric" pattern="[0-9]*" enterkeyhint="done" autocomplete="off" value="1" aria-label="Quantite">
+                                <input id="detected-quantity" type="text" inputmode="decimal" enterkeyhint="done" autocomplete="off" value="1" aria-label="Quantite">
 
                                 <button class="icon-button" type="button" data-detected-step="1" aria-label="Augmenter la quantite" title="Augmenter">
                                     <i data-lucide="Plus"></i>

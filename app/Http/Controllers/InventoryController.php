@@ -11,6 +11,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 final class InventoryController extends Controller
@@ -45,9 +46,11 @@ final class InventoryController extends Controller
     public function storeItem(Request $request, string $uuid): JsonResponse|RedirectResponse
     {
         $session = $this->find($uuid);
+        $this->normalizeQuantity($request);
+
         $validated = $request->validate([
             'code_article' => ['required', 'string', 'max:255'],
-            'quantity' => ['required', 'integer', 'min:0', 'max:4294967295'],
+            'quantity' => ['required', 'numeric', 'regex:/^\d+(?:\.\d{1,3})?$/', 'min:0', 'max:4294967295'],
             'mode' => ['nullable', 'string', 'in:add,replace'],
         ]);
         $code = trim($validated['code_article']);
@@ -69,14 +72,17 @@ final class InventoryController extends Controller
                     }
 
                     $item->quantity = $validated['mode'] === 'add'
-                        ? $item->quantity + (int) $validated['quantity']
-                        : (int) $validated['quantity'];
+                        ? $this->addQuantities($item->quantity, $validated['quantity'])
+                        : $this->formatQuantity($validated['quantity']);
                     $item->save();
 
                     return $item;
                 }
 
-                return $session->items()->create(['code_article' => $code, 'quantity' => $validated['quantity']]);
+                return $session->items()->create([
+                    'code_article' => $code,
+                    'quantity' => $this->formatQuantity($validated['quantity']),
+                ]);
             });
         } catch (QueryException) {
             return $this->itemError($request, 'Cet article vient deja d etre enregistre. Relisez sa quantite avant de continuer.', 409);
@@ -92,13 +98,19 @@ final class InventoryController extends Controller
     public function updateItem(Request $request, string $uuid, string $itemUuid): JsonResponse|RedirectResponse
     {
         $session = $this->find($uuid);
-        $validated = $request->validate(['quantity' => ['required', 'integer', 'min:0', 'max:4294967295']]);
+        $this->normalizeQuantity($request);
+
+        $validated = $request->validate([
+            'quantity' => ['required', 'numeric', 'regex:/^\d+(?:\.\d{1,3})?$/', 'min:0', 'max:4294967295'],
+        ]);
         if ($session->isCompleted()) {
             return $this->itemError($request, 'Cet inventaire est termine. Reouvrez-le pour le modifier.', 422);
         }
 
         $item = $session->items()->where('uuid', $itemUuid)->firstOrFail();
-        $item->update(['quantity' => $validated['quantity']]);
+        $item->update([
+            'quantity' => $this->formatQuantity($validated['quantity']),
+        ]);
 
         return $this->itemSuccess($request, $session, $item);
     }
@@ -155,7 +167,50 @@ final class InventoryController extends Controller
 
         $session->loadCount('items')->loadSum('items', 'quantity');
 
-        return response()->json(['item' => $item, 'items_count' => $session->items_count, 'total_quantity' => (int) ($session->items_sum_quantity ?? 0)]);
+        return response()->json([
+            'item' => $item,
+            'items_count' => $session->items_count,
+            'total_quantity' => (float) ($session->items_sum_quantity ?? 0),
+        ]);
+    }
+
+    private function normalizeQuantity(Request $request): void
+    {
+        $request->merge([
+            'quantity' => str_replace(',', '.', trim((string) $request->input('quantity'))),
+        ]);
+    }
+
+    private function quantityToUnits(string|int|float $quantity): int
+    {
+        $quantity = str_replace(',', '.', trim((string) $quantity));
+        [$whole, $decimal] = array_pad(explode('.', $quantity, 2), 2, '');
+        $decimal = str_pad(substr($decimal, 0, 3), 3, '0');
+
+        return ((int) $whole * 1000) + (int) $decimal;
+    }
+
+    private function unitsToQuantity(int $units): string
+    {
+        return sprintf('%d.%03d', intdiv($units, 1000), $units % 1000);
+    }
+
+    private function formatQuantity(string|int|float $quantity): string
+    {
+        return $this->unitsToQuantity($this->quantityToUnits($quantity));
+    }
+
+    private function addQuantities(string|int|float $current, string|int|float $added): string
+    {
+        $units = $this->quantityToUnits($current) + $this->quantityToUnits($added);
+
+        if ($units > 4_294_967_295_000) {
+            throw ValidationException::withMessages([
+                'quantity' => 'La quantite totale depasse la limite autorisee.',
+            ]);
+        }
+
+        return $this->unitsToQuantity($units);
     }
 
     private function itemError(Request $request, string $message, int $status): JsonResponse|RedirectResponse
