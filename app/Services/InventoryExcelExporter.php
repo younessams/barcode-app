@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\ArticleReference;
 use App\Models\InventorySession;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -15,19 +16,38 @@ final class InventoryExcelExporter
         $spreadsheet = new Spreadsheet;
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setCellValue('A1', 'Code Article');
-        $sheet->setCellValue('B1', 'Quantité');
+        $sheet->setCellValue('B1', 'Designation');
+        $sheet->setCellValue('C1', 'Emplacement');
+        $sheet->setCellValue('D1', 'Quantité');
+
+        $items = $session->items()->orderBy('id')->get();
+        $references = collect();
+
+        foreach ($items->pluck('code_article')->unique()->values()->chunk(500) as $codeChunk) {
+            $references = $references->merge(
+                ArticleReference::query()
+                    ->whereIn('code_article', $codeChunk)
+                    ->get()
+            );
+        }
+
+        $references = $references->keyBy('code_article');
 
         if ($includeQr) {
-            $sheet->setCellValue('C1', 'QR Code');
+            $sheet->setCellValue('E1', 'QR Code');
         }
 
         $tempFiles = [];
 
         try {
-            foreach ($session->items()->orderBy('id')->get() as $row => $item) {
+            foreach ($items as $row => $item) {
                 $excelRow = $row + 2;
+                $reference = $references->get($item->code_article);
+
                 $sheet->setCellValueExplicit('A'.$excelRow, $item->code_article, DataType::TYPE_STRING);
-                $sheet->setCellValue('B'.$excelRow, $item->quantity);
+                $sheet->setCellValueExplicit('B'.$excelRow, $reference?->designation ?? '', DataType::TYPE_STRING);
+                $sheet->setCellValueExplicit('C'.$excelRow, $reference?->emplacement ?? '', DataType::TYPE_STRING);
+                $sheet->setCellValue('D'.$excelRow, $item->quantity);
 
                 if ($includeQr) {
                     $qrPath = $this->createQrPng($item->code_article, $session->uuid.'-'.$item->uuid);
@@ -38,7 +58,7 @@ final class InventoryExcelExporter
                     $drawing->setDescription($item->code_article);
                     $drawing->setPath($qrPath);
                     $drawing->setHeight(72);
-                    $drawing->setCoordinates('C'.$excelRow);
+                    $drawing->setCoordinates('E'.$excelRow);
                     $drawing->setWorksheet($sheet);
 
                     $sheet->getRowDimension($excelRow)->setRowHeight(58);
@@ -46,10 +66,12 @@ final class InventoryExcelExporter
             }
 
             $sheet->getColumnDimension('A')->setWidth(26);
-            $sheet->getColumnDimension('B')->setWidth(12);
+            $sheet->getColumnDimension('B')->setWidth(34);
+            $sheet->getColumnDimension('C')->setWidth(20);
+            $sheet->getColumnDimension('D')->setWidth(12);
 
             if ($includeQr) {
-                $sheet->getColumnDimension('C')->setWidth(14);
+                $sheet->getColumnDimension('E')->setWidth(14);
             }
             $path = storage_path('app/'.'inventory-'.($session->uuid).'.xlsx');
             (new Xlsx($spreadsheet))->save($path);

@@ -289,6 +289,10 @@
             Inventaire
         </a>
 
+        <a class="app-nav-link" href="{{ route('article-references.index') }}">
+            Referentiel articles
+        </a>
+
         <a class="app-nav-link active" href="{{ route('catalogue.index') }}">
             Catalogue QR
         </a>

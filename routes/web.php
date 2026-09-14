@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\BarcodeLabelController;
 use App\Http\Controllers\InventoryController;
+use App\Http\Controllers\ArticleReferenceController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [BarcodeLabelController::class, 'index'])->name('labels.index');
@@ -17,6 +18,9 @@ Route::post('/inventaire/{uuid}/reopen', [InventoryController::class, 'reopen'])
 Route::post('/inventaire/{uuid}/items', [InventoryController::class, 'storeItem'])->name('inventories.items.store');
 Route::patch('/inventaire/{uuid}/items/{itemUuid}', [InventoryController::class, 'updateItem'])->name('inventories.items.update');
 Route::delete('/inventaire/{uuid}/items/{itemUuid}', [InventoryController::class, 'destroyItem'])->name('inventories.items.destroy');
+
+Route::get('/article-references', [ArticleReferenceController::class, 'index'])->name('article-references.index');
+Route::post('/article-references/import', [ArticleReferenceController::class, 'import'])->name('article-references.import');
 
 Route::get('/catalogue', [\App\Http\Controllers\ManualCatalogueController::class, 'index'])->name('catalogue.index');
 Route::post('/catalogue', [\App\Http\Controllers\ManualCatalogueController::class, 'generate'])->name('catalogue.generate');

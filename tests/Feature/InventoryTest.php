@@ -2,10 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Models\ArticleReference;
 use App\Models\InventoryItem;
 use App\Models\InventorySession;
 use App\Services\InventoryExcelExporter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Tests\TestCase;
 
@@ -27,7 +29,7 @@ final class InventoryTest extends TestCase
     {
         $session = InventorySession::create(['name' => 'Test']);
         $response = $this->postJson(route('inventories.items.store', $session->uuid), ['code_article' => '  000012345  ', 'quantity' => 12]);
-        $response->assertOk()->assertJsonPath('item.code_article', '000012345')->assertJsonPath('item.quantity', 12);
+        $response->assertOk()->assertJsonPath('item.code_article', '000012345')->assertJsonPath('item.quantity', '12.000');
         $item = $session->items()->first();
         $this->assertNotNull($item->uuid);
         $this->assertSame(1, $session->items()->count());
@@ -50,8 +52,8 @@ final class InventoryTest extends TestCase
         $this->postJson($route, ['code_article' => 'ABC-0003', 'quantity' => 12])->assertOk();
         $this->postJson($route, ['code_article' => 'ABC-0003', 'quantity' => 5])->assertStatus(409)->assertJsonPath('duplicate', true);
         $this->assertDatabaseHas('inventory_items', ['code_article' => 'ABC-0003', 'quantity' => 12]);
-        $this->postJson($route, ['code_article' => 'ABC-0003', 'quantity' => 5, 'mode' => 'add'])->assertOk()->assertJsonPath('item.quantity', 17);
-        $this->postJson($route, ['code_article' => 'ABC-0003', 'quantity' => 5, 'mode' => 'replace'])->assertOk()->assertJsonPath('item.quantity', 5);
+        $this->postJson($route, ['code_article' => 'ABC-0003', 'quantity' => 5, 'mode' => 'add'])->assertOk()->assertJsonPath('item.quantity', '17.000');
+        $this->postJson($route, ['code_article' => 'ABC-0003', 'quantity' => 5, 'mode' => 'replace'])->assertOk()->assertJsonPath('item.quantity', '5.000');
     }
 
     public function test_zero_is_valid_and_negative_quantity_is_rejected(): void
@@ -97,15 +99,66 @@ final class InventoryTest extends TestCase
     public function test_totals_and_export_contain_only_the_three_business_columns(): void
     {
         $session = InventorySession::create(['name' => 'Test', 'zone' => 'Zone A']);
+        ArticleReference::create(['code_article' => '6NG15', 'designation' => 'Article connu', 'emplacement' => 'A-01']);
         $route = route('inventories.items.store', $session->uuid);
         $this->postJson($route, ['code_article' => '6NG15', 'quantity' => 12])->assertJson(['items_count' => 1, 'total_quantity' => 12]);
-        $this->postJson($route, ['code_article' => '000012345', 'quantity' => 8])->assertJson(['items_count' => 2, 'total_quantity' => 20]);
+        $this->postJson($route, ['code_article' => '000012345', 'quantity' => '1.250'])->assertJson(['items_count' => 2, 'total_quantity' => 13.25]);
         $path = app(InventoryExcelExporter::class)->export($session->fresh());
         $workbook = IOFactory::load($path);
         $sheet = $workbook->getActiveSheet();
-        $this->assertSame(['Code Article', 'Quantité', 'QR Code'], $sheet->rangeToArray('A1:C1')[0]);
-        $this->assertCount(2, $sheet->getDrawingCollection());
+        $this->assertSame(['Code Article', 'Designation', 'Emplacement', 'Quantité'], $sheet->rangeToArray('A1:D1')[0]);
+        $this->assertCount(0, $sheet->getDrawingCollection());
+        $this->assertSame('6NG15', $sheet->getCell('A2')->getValue());
+        $this->assertSame('Article connu', $sheet->getCell('B2')->getValue());
+        $this->assertSame('A-01', $sheet->getCell('C2')->getValue());
+        $this->assertSame(12.0, $sheet->getCell('D2')->getValue());
         $this->assertSame('000012345', $sheet->getCell('A3')->getValue());
+        $this->assertNull($sheet->getCell('B3')->getValue());
+        $this->assertNull($sheet->getCell('C3')->getValue());
+        $this->assertSame(1.25, $sheet->getCell('D3')->getValue());
+        unlink($path);
+    }
+
+    public function test_optional_qr_export_uses_column_e_and_keeps_code_article_payload(): void
+    {
+        $session = InventorySession::create(['name' => 'QR']);
+        ArticleReference::create(['code_article' => '00123', 'designation' => 'Article QR', 'emplacement' => 'Q-01']);
+        InventoryItem::create(['inventory_session_id' => $session->id, 'code_article' => '00123', 'quantity' => '1.500']);
+
+        $path = app(InventoryExcelExporter::class)->export($session, true);
+        $sheet = IOFactory::load($path)->getActiveSheet();
+        $drawing = $sheet->getDrawingCollection()[0];
+
+        $this->assertSame(['Code Article', 'Designation', 'Emplacement', 'Quantité', 'QR Code'], $sheet->rangeToArray('A1:E1')[0]);
+        $this->assertCount(1, $sheet->getDrawingCollection());
+        $this->assertSame('E2', $drawing->getCoordinates());
+        $this->assertSame('00123', $drawing->getDescription());
+        $this->assertSame(1.5, $sheet->getCell('D2')->getValue());
+        unlink($path);
+    }
+
+    public function test_export_writes_reference_formula_like_text_as_literal_strings(): void
+    {
+        $session = InventorySession::create(['name' => 'Formula text']);
+        ArticleReference::create([
+            'code_article' => '00123',
+            'designation' => '=HYPERLINK("https://example.com","click")',
+            'emplacement' => '=1+1',
+        ]);
+        InventoryItem::create(['inventory_session_id' => $session->id, 'code_article' => '00123', 'quantity' => '2.500']);
+
+        $path = app(InventoryExcelExporter::class)->export($session);
+        $sheet = IOFactory::load($path)->getActiveSheet();
+
+        $this->assertSame('00123', $sheet->getCell('A2')->getValue());
+        $this->assertSame(DataType::TYPE_STRING, $sheet->getCell('A2')->getDataType());
+        $this->assertSame('=HYPERLINK("https://example.com","click")', $sheet->getCell('B2')->getValue());
+        $this->assertSame(DataType::TYPE_STRING, $sheet->getCell('B2')->getDataType());
+        $this->assertSame('=1+1', $sheet->getCell('C2')->getValue());
+        $this->assertSame(DataType::TYPE_STRING, $sheet->getCell('C2')->getDataType());
+        $this->assertSame(2.5, $sheet->getCell('D2')->getValue());
+        $this->assertNotSame(DataType::TYPE_FORMULA, $sheet->getCell('B2')->getDataType());
+        $this->assertNotSame(DataType::TYPE_FORMULA, $sheet->getCell('C2')->getDataType());
         unlink($path);
     }
 
@@ -121,7 +174,25 @@ final class InventoryTest extends TestCase
         $sheet = IOFactory::load($path)->getActiveSheet();
         $this->assertSame('ITEM-0001', $sheet->getCell('A2')->getValue());
         $this->assertSame('ITEM-0900', $sheet->getCell('A901')->getValue());
-        $this->assertCount(900, $sheet->getDrawingCollection());
+        $this->assertCount(0, $sheet->getDrawingCollection());
         unlink($path);
+    }
+
+    public function test_inventory_items_do_not_require_article_references(): void
+    {
+        $session = InventorySession::create(['name' => 'Unknown reference']);
+
+        $this->postJson(route('inventories.items.store', $session->uuid), [
+            'code_article' => 'UNKNOWN-999',
+            'quantity' => '0.125',
+        ])->assertOk()
+            ->assertJsonPath('item.code_article', 'UNKNOWN-999')
+            ->assertJsonPath('item.quantity', '0.125');
+
+        $this->assertDatabaseHas('inventory_items', [
+            'code_article' => 'UNKNOWN-999',
+            'quantity' => '0.125',
+        ]);
+        $this->assertDatabaseCount('article_references', 0);
     }
 }
