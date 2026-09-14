@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\InventoryItem;
 use App\Models\InventorySession;
 use App\Services\InventoryExcelExporter;
+use App\Support\CodeArticleNormalizer;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -53,7 +54,7 @@ final class InventoryController extends Controller
             'quantity' => ['required', 'numeric', 'regex:/^\d+(?:\.\d{1,3})?$/', 'min:0', 'max:4294967295'],
             'mode' => ['nullable', 'string', 'in:add,replace'],
         ]);
-        $code = trim($validated['code_article']);
+        $code = CodeArticleNormalizer::normalize($validated['code_article']);
 
         if ($code === '') {
             return $this->itemError($request, 'Le code article est obligatoire.', 422);

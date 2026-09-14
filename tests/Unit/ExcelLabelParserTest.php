@@ -60,7 +60,7 @@ final class ExcelLabelParserTest extends TestCase
     {
         $this->expectException(ExcelLabelParseException::class);
         $this->expectExceptionMessage('ligne Excel 2');
-        $this->expectExceptionMessage('é');
+        $this->expectExceptionMessage('CAF');
 
         (new ExcelLabelParser)->parse($this->createWorkbook([
             ['SKU'],
@@ -96,8 +96,8 @@ final class ExcelLabelParserTest extends TestCase
         $labels = (new ExcelLabelParser)->parse($this->createWorkbook([
             ['Code Article'],
             ['001234'],
-            ['6DROGUER-050'],
-            [' ABC-001 '],
+            ['6droguer-050'],
+            [' abc-001 '],
         ]));
 
         $this->assertSame(['001234', '6DROGUER-050', 'ABC-001'], array_map(

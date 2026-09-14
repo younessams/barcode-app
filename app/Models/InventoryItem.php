@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\CodeArticleNormalizer;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
@@ -19,7 +20,7 @@ final class InventoryItem extends Model
         });
 
         self::saving(function (self $item): void {
-            $item->code_article = trim($item->code_article);
+            $item->code_article = CodeArticleNormalizer::normalize($item->code_article);
         });
     }
 

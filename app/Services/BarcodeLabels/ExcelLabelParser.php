@@ -2,6 +2,7 @@
 
 namespace App\Services\BarcodeLabels;
 
+use App\Support\CodeArticleNormalizer;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -51,7 +52,7 @@ final class ExcelLabelParser
                     continue;
                 }
 
-                $code = $this->cellString($sheet->getCell([$codeColumn, $row]));
+                $code = CodeArticleNormalizer::normalize($this->cellString($sheet->getCell([$codeColumn, $row])));
                 if ($code === '') {
                     continue;
                 }

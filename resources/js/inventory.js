@@ -57,6 +57,10 @@ const ZXING_SCAN_DELAY_MS = 80;
 
 createIcons({ icons: { Camera, ChevronDown, Keyboard, Minus, Pencil, Plus, RefreshCw, Save, Trash2, X } });
 
+function normalizeCodeArticle(code) {
+    return String(code ?? '').trim().toLocaleUpperCase();
+}
+
 function syncQuantityModalViewport() {
     if (!detectedPanel || detectedPanel.hidden) return;
 
@@ -789,10 +793,12 @@ function zxingScan() {
 }
 
 function showDetected(code, source = 'manual') {
-    if (scannerState !== READY || !code) return;
+    const normalizedCode = normalizeCodeArticle(code);
+
+    if (scannerState !== READY || !normalizedCode) return;
 
     scannerState = DETECTED;
-    pendingCode = code;
+    pendingCode = normalizedCode;
     stopDecoder();
 
     if (source === 'camera') {
@@ -801,7 +807,7 @@ function showDetected(code, source = 'manual') {
         freezeCameraFrame();
     }
 
-    detectedCode.textContent = code;
+    detectedCode.textContent = normalizedCode;
     detectedQuantity.value = '1';
     detectedPanel.hidden = false;
     document.body.classList.add('quantity-modal-open');

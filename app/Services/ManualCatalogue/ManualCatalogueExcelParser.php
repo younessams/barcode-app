@@ -2,6 +2,7 @@
 
 namespace App\Services\ManualCatalogue;
 
+use App\Support\CodeArticleNormalizer;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -67,8 +68,10 @@ final class ManualCatalogueExcelParser
             $items = [];
 
             for ($row = 2; $row <= $highestRow; $row++) {
-                $code = $this->cellString(
-                    $sheet->getCell([$codeColumn, $row])
+                $code = CodeArticleNormalizer::normalize(
+                    $this->cellString(
+                        $sheet->getCell([$codeColumn, $row])
+                    )
                 );
 
                 $designation = $this->cellString(

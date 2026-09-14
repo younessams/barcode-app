@@ -71,8 +71,8 @@ final class ArticleReferenceImportTest extends TestCase
     {
         $path = $this->createWorkbook([
             ['Code Article', 'Designation', 'Emplacement'],
-            ['00123', 'First', 'A-01'],
-            ['00123', 'Last', 'B-04'],
+            ['6hygsec-009', 'First', 'A-01'],
+            ['6HYGSEC-009', 'Last', 'B-04'],
         ]);
 
         $response = $this->post(route('article-references.import'), [
@@ -84,7 +84,7 @@ final class ArticleReferenceImportTest extends TestCase
         $response->assertRedirect(route('article-references.index'));
         $this->assertSame(1, $result->duplicateRows);
         $this->assertDatabaseHas('article_references', [
-            'code_article' => '00123',
+            'code_article' => '6HYGSEC-009',
             'designation' => 'Last',
             'emplacement' => 'B-04',
         ]);

@@ -34,12 +34,13 @@ final class ArticleReferenceExcelParserTest extends TestCase
     {
         $data = (new ArticleReferenceExcelParser)->parse($this->workbook([
             ['Code Article', 'Designation', 'Emplacement'],
-            ['00123', 'Article A', 'A-01'],
-            ['00123', 'Article A updated', 'B-04'],
+            ['6hygsec-009', 'Article A', 'A-01'],
+            ['6HYGSEC-009', 'Article A updated', 'B-04'],
         ]));
 
         $this->assertCount(1, $data->rows);
         $this->assertSame(1, $data->duplicateRows);
+        $this->assertSame('6HYGSEC-009', $data->rows[0]->codeArticle);
         $this->assertSame('Article A updated', $data->rows[0]->designation);
         $this->assertSame('B-04', $data->rows[0]->emplacement);
     }

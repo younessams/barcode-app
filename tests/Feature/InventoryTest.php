@@ -7,6 +7,7 @@ use App\Models\InventoryItem;
 use App\Models\InventorySession;
 use App\Services\InventoryExcelExporter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Tests\TestCase;
@@ -25,11 +26,11 @@ final class InventoryTest extends TestCase
         $this->assertSame(InventorySession::STATUS_IN_PROGRESS, $session->status);
     }
 
-    public function test_item_creation_normalizes_only_outer_whitespace_and_generates_uuid(): void
+    public function test_item_creation_normalizes_code_article_and_generates_uuid(): void
     {
         $session = InventorySession::create(['name' => 'Test']);
-        $response = $this->postJson(route('inventories.items.store', $session->uuid), ['code_article' => '  000012345  ', 'quantity' => 12]);
-        $response->assertOk()->assertJsonPath('item.code_article', '000012345')->assertJsonPath('item.quantity', '12.000');
+        $response = $this->postJson(route('inventories.items.store', $session->uuid), ['code_article' => '  001ab-09  ', 'quantity' => 12]);
+        $response->assertOk()->assertJsonPath('item.code_article', '001AB-09')->assertJsonPath('item.quantity', '12.000');
         $item = $session->items()->first();
         $this->assertNotNull($item->uuid);
         $this->assertSame(1, $session->items()->count());
@@ -49,11 +50,31 @@ final class InventoryTest extends TestCase
     {
         $session = InventorySession::create(['name' => 'Test']);
         $route = route('inventories.items.store', $session->uuid);
-        $this->postJson($route, ['code_article' => 'ABC-0003', 'quantity' => 12])->assertOk();
+        $this->postJson($route, ['code_article' => 'abc-0003', 'quantity' => 12])->assertOk()
+            ->assertJsonPath('item.code_article', 'ABC-0003');
         $this->postJson($route, ['code_article' => 'ABC-0003', 'quantity' => 5])->assertStatus(409)->assertJsonPath('duplicate', true);
+        $this->postJson($route, ['code_article' => 'AbC-0003', 'quantity' => 5])->assertStatus(409)->assertJsonPath('duplicate', true);
         $this->assertDatabaseHas('inventory_items', ['code_article' => 'ABC-0003', 'quantity' => 12]);
         $this->postJson($route, ['code_article' => 'ABC-0003', 'quantity' => 5, 'mode' => 'add'])->assertOk()->assertJsonPath('item.quantity', '17.000');
         $this->postJson($route, ['code_article' => 'ABC-0003', 'quantity' => 5, 'mode' => 'replace'])->assertOk()->assertJsonPath('item.quantity', '5.000');
+    }
+
+    public function test_duplicate_add_uses_canonical_code_without_creating_a_second_row(): void
+    {
+        $session = InventorySession::create(['name' => 'Case add']);
+        $route = route('inventories.items.store', $session->uuid);
+
+        $this->postJson($route, ['code_article' => 'ABC-01', 'quantity' => '1.250'])->assertOk();
+        $this->postJson($route, ['code_article' => 'abc-01', 'quantity' => '2.500', 'mode' => 'add'])
+            ->assertOk()
+            ->assertJsonPath('item.code_article', 'ABC-01')
+            ->assertJsonPath('item.quantity', '3.750');
+
+        $this->assertSame(1, $session->items()->count());
+        $this->assertDatabaseHas('inventory_items', [
+            'code_article' => 'ABC-01',
+            'quantity' => '3.750',
+        ]);
     }
 
     public function test_zero_is_valid_and_negative_quantity_is_rejected(): void
@@ -99,16 +120,16 @@ final class InventoryTest extends TestCase
     public function test_totals_and_export_contain_only_the_three_business_columns(): void
     {
         $session = InventorySession::create(['name' => 'Test', 'zone' => 'Zone A']);
-        ArticleReference::create(['code_article' => '6NG15', 'designation' => 'Article connu', 'emplacement' => 'A-01']);
+        ArticleReference::create(['code_article' => '6HYGSEC-009', 'designation' => 'Article connu', 'emplacement' => 'A-01']);
         $route = route('inventories.items.store', $session->uuid);
-        $this->postJson($route, ['code_article' => '6NG15', 'quantity' => 12])->assertJson(['items_count' => 1, 'total_quantity' => 12]);
+        $this->postJson($route, ['code_article' => '6hygsec-009', 'quantity' => 12])->assertJson(['items_count' => 1, 'total_quantity' => 12]);
         $this->postJson($route, ['code_article' => '000012345', 'quantity' => '1.250'])->assertJson(['items_count' => 2, 'total_quantity' => 13.25]);
         $path = app(InventoryExcelExporter::class)->export($session->fresh());
         $workbook = IOFactory::load($path);
         $sheet = $workbook->getActiveSheet();
         $this->assertSame(['Code Article', 'Designation', 'Emplacement', 'Quantité'], $sheet->rangeToArray('A1:D1')[0]);
         $this->assertCount(0, $sheet->getDrawingCollection());
-        $this->assertSame('6NG15', $sheet->getCell('A2')->getValue());
+        $this->assertSame('6HYGSEC-009', $sheet->getCell('A2')->getValue());
         $this->assertSame('Article connu', $sheet->getCell('B2')->getValue());
         $this->assertSame('A-01', $sheet->getCell('C2')->getValue());
         $this->assertSame(12.0, $sheet->getCell('D2')->getValue());
@@ -194,5 +215,57 @@ final class InventoryTest extends TestCase
             'quantity' => '0.125',
         ]);
         $this->assertDatabaseCount('article_references', 0);
+    }
+
+    public function test_code_article_normalization_migration_merges_inventory_collisions_exactly(): void
+    {
+        $first = InventorySession::create(['name' => 'First']);
+        $second = InventorySession::create(['name' => 'Second']);
+        $now = now();
+
+        DB::table('inventory_items')->insert([
+            ['uuid' => '11111111-1111-1111-1111-111111111111', 'inventory_session_id' => $first->id, 'code_article' => '6hygsec-009', 'quantity' => '2.500', 'created_at' => $now, 'updated_at' => $now],
+            ['uuid' => '22222222-2222-2222-2222-222222222222', 'inventory_session_id' => $first->id, 'code_article' => '6HYGSEC-009', 'quantity' => '3.250', 'created_at' => $now, 'updated_at' => $now],
+            ['uuid' => '33333333-3333-3333-3333-333333333333', 'inventory_session_id' => $second->id, 'code_article' => '6hygsec-009', 'quantity' => '1.125', 'created_at' => $now, 'updated_at' => $now],
+        ]);
+
+        $this->runCodeArticleNormalizationMigration();
+
+        $this->assertSame(2, InventoryItem::count());
+        $this->assertDatabaseHas('inventory_items', [
+            'id' => 1,
+            'uuid' => '11111111-1111-1111-1111-111111111111',
+            'inventory_session_id' => $first->id,
+            'code_article' => '6HYGSEC-009',
+            'quantity' => '5.750',
+        ]);
+        $this->assertDatabaseHas('inventory_items', [
+            'inventory_session_id' => $second->id,
+            'code_article' => '6HYGSEC-009',
+            'quantity' => '1.125',
+        ]);
+    }
+
+    public function test_code_article_normalization_migration_keeps_latest_article_reference_collision(): void
+    {
+        DB::table('article_references')->insert([
+            ['code_article' => '6hygsec-009', 'designation' => 'Old', 'emplacement' => 'A-01', 'created_at' => '2026-09-14 08:00:00', 'updated_at' => '2026-09-14 08:00:00'],
+            ['code_article' => '6HYGSEC-009', 'designation' => 'New', 'emplacement' => 'B-02', 'created_at' => '2026-09-14 08:30:00', 'updated_at' => '2026-09-14 09:00:00'],
+        ]);
+
+        $this->runCodeArticleNormalizationMigration();
+
+        $this->assertSame(1, ArticleReference::count());
+        $this->assertDatabaseHas('article_references', [
+            'code_article' => '6HYGSEC-009',
+            'designation' => 'New',
+            'emplacement' => 'B-02',
+        ]);
+    }
+
+    private function runCodeArticleNormalizationMigration(): void
+    {
+        $migration = include database_path('migrations/2026_09_14_121147_normalize_code_articles_to_uppercase.php');
+        $migration->up();
     }
 }
