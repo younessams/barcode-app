@@ -7,13 +7,18 @@ use App\Models\InventoryItem;
 use App\Models\InventorySession;
 use App\Services\InventoryExcelExporter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use Tests\Fixtures\CreatesExcelFixtures;
 use Tests\TestCase;
 
 final class InventoryTest extends TestCase
 {
+    use CreatesExcelFixtures;
     use RefreshDatabase;
 
     public function test_inventory_creation_generates_uuid_and_keeps_optional_zone(): void
@@ -24,6 +29,135 @@ final class InventoryTest extends TestCase
         $this->assertNotNull($session->uuid);
         $this->assertSame('Zone A', $session->zone);
         $this->assertSame(InventorySession::STATUS_IN_PROGRESS, $session->status);
+    }
+
+    public function test_inventory_creation_still_accepts_name_only(): void
+    {
+        $this->post(route('inventories.store'), ['name' => 'Inventaire sans zone'])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('inventory_sessions', [
+            'name' => 'Inventaire sans zone',
+            'zone' => null,
+        ]);
+        $this->assertDatabaseCount('article_references', 0);
+    }
+
+    public function test_inventory_creation_rejects_reference_file_when_zone_is_blank(): void
+    {
+        $path = $this->createWorkbook([
+            ['Code Article', 'Designation', 'Emplacement'],
+            ['ABC-001', 'Article 1', 'A11'],
+        ]);
+
+        $this->from(route('inventories.index'))
+            ->post(route('inventories.store'), [
+                'name' => 'Inventaire Zone A',
+                'zone' => '  ',
+                'article_reference_file' => $this->uploadReference($path),
+            ])
+            ->assertRedirect(route('inventories.index'))
+            ->assertSessionHasErrors('zone');
+
+        $this->assertDatabaseCount('inventory_sessions', 0);
+        $this->assertDatabaseCount('article_references', 0);
+    }
+
+    public function test_inventory_creation_imports_zone_reference_file_and_creates_inventory(): void
+    {
+        ArticleReference::create([
+            'code_article' => 'KEEP',
+            'designation' => 'Keep',
+            'emplacement' => 'K-01',
+        ]);
+        ArticleReference::create([
+            'code_article' => 'ABC-001',
+            'designation' => 'Old',
+            'emplacement' => 'A10',
+        ]);
+
+        $path = $this->createWorkbook([
+            ['Code Article', 'Designation', 'Emplacement'],
+            ['abc-001', 'Article 1', 'A11'],
+            ['ABC-002', 'First', 'A12'],
+            ['abc-002', 'Last', 'A13'],
+            ['001ab-09', '', ''],
+        ]);
+
+        $response = $this->post(route('inventories.store'), [
+            'name' => 'Inventaire Zone A',
+            'zone' => ' Zone A ',
+            'article_reference_file' => $this->uploadReference($path),
+        ]);
+
+        $session = InventorySession::first();
+        $response->assertRedirect(route('inventories.show', $session->uuid));
+
+        $this->assertDatabaseHas('inventory_sessions', [
+            'name' => 'Inventaire Zone A',
+            'zone' => 'Zone A',
+        ]);
+        $this->assertDatabaseHas('article_references', [
+            'code_article' => 'ABC-001',
+            'designation' => 'Article 1',
+            'emplacement' => 'A11',
+        ]);
+        $this->assertDatabaseHas('article_references', [
+            'code_article' => 'ABC-002',
+            'designation' => 'Last',
+            'emplacement' => 'A13',
+        ]);
+        $this->assertDatabaseHas('article_references', [
+            'code_article' => '001AB-09',
+            'designation' => null,
+            'emplacement' => null,
+        ]);
+        $this->assertDatabaseHas('article_references', ['code_article' => 'KEEP']);
+        $this->assertSame(4, ArticleReference::count());
+    }
+
+    public function test_inventory_creation_rejects_formula_reference_file_without_creating_inventory_or_partial_import(): void
+    {
+        ArticleReference::create([
+            'code_article' => 'KEEP',
+            'designation' => 'Keep',
+            'emplacement' => 'K-01',
+        ]);
+
+        $this->from(route('inventories.index'))
+            ->post(route('inventories.store'), [
+                'name' => 'Inventaire Zone A',
+                'zone' => 'Zone A',
+                'article_reference_file' => $this->uploadReference($this->formulaReferenceWorkbook()),
+            ])
+            ->assertRedirect(route('inventories.index'))
+            ->assertSessionHasErrors('article_reference_file');
+
+        $this->assertDatabaseCount('inventory_sessions', 0);
+        $this->assertSame(1, ArticleReference::count());
+        $this->assertDatabaseHas('article_references', [
+            'code_article' => 'KEEP',
+            'designation' => 'Keep',
+            'emplacement' => 'K-01',
+        ]);
+    }
+
+    public function test_inventory_creation_page_exposes_optional_zone_reference_upload(): void
+    {
+        $response = $this->get(route('inventories.index'))
+            ->assertOk()
+            ->assertSee('id="zone"', false)
+            ->assertSee('Fichier de reference de la zone (optionnel)')
+            ->assertSee('Renseignez d abord une zone pour activer l import du fichier.')
+            ->assertSee('Choisir un fichier Excel')
+            ->assertSee('Fichier pret a etre importe avec cet inventaire.');
+
+        $html = $response->getContent();
+
+        $this->assertStringContainsString('name="article_reference_file"', $html);
+        $this->assertStringContainsString('accept=".xlsx,.xls"', $html);
+        $this->assertStringContainsString('disabled data-upload-input', $html);
+        $this->assertStringContainsString("zone.addEventListener('input', syncUploadState)", $html);
     }
 
     public function test_item_creation_normalizes_code_article_and_generates_uuid(): void
@@ -267,5 +401,33 @@ final class InventoryTest extends TestCase
     {
         $migration = include database_path('migrations/2026_09_14_121147_normalize_code_articles_to_uppercase.php');
         $migration->up();
+    }
+
+    private function uploadReference(string $path): UploadedFile
+    {
+        return new UploadedFile(
+            $path,
+            'article-references.xlsx',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            null,
+            true
+        );
+    }
+
+    private function formulaReferenceWorkbook(): string
+    {
+        $spreadsheet = new Spreadsheet;
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->fromArray([
+            ['Code Article', 'Designation', 'Emplacement'],
+            ['ABC-001', 'Article 1', 'A11'],
+        ]);
+        $sheet->setCellValue([2, 2], '=CONCAT("Article"," 1")');
+
+        $path = tempnam(sys_get_temp_dir(), 'inventory-reference-').'.xlsx';
+        (new Xlsx($spreadsheet))->save($path);
+        $spreadsheet->disconnectWorksheets();
+
+        return $path;
     }
 }

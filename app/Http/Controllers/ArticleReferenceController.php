@@ -3,12 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\ArticleReference;
+use App\Services\ArticleReferences\ArticleReferenceImporter;
 use App\Services\ArticleReferences\ArticleReferenceExcelParser;
-use App\Services\ArticleReferences\ArticleReferenceImportResult;
 use App\Services\ArticleReferences\ArticleReferenceParseException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 final class ArticleReferenceController extends Controller
 {
@@ -26,6 +25,7 @@ final class ArticleReferenceController extends Controller
     public function import(
         Request $request,
         ArticleReferenceExcelParser $parser,
+        ArticleReferenceImporter $importer,
     ): RedirectResponse {
         $validated = $request->validate([
             'excel_file' => [
@@ -53,57 +53,7 @@ final class ArticleReferenceController extends Controller
             ]);
         }
 
-        $result = DB::transaction(function () use ($import): ArticleReferenceImportResult {
-            $codes = array_map(
-                fn ($row): string => $row->codeArticle,
-                $import->rows
-            );
-
-            $existingCodes = [];
-
-            foreach (array_chunk($codes, 500) as $codeChunk) {
-                array_push(
-                    $existingCodes,
-                    ...ArticleReference::query()
-                        ->whereIn('code_article', $codeChunk)
-                        ->pluck('code_article')
-                        ->all()
-                );
-            }
-
-            $existingLookup = array_fill_keys($existingCodes, true);
-            $now = now();
-            $records = [];
-
-            foreach ($import->rows as $row) {
-                $records[] = [
-                    'code_article' => $row->codeArticle,
-                    'designation' => $row->designation,
-                    'emplacement' => $row->emplacement,
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ];
-            }
-
-            foreach (array_chunk($records, 100) as $chunk) {
-                ArticleReference::upsert(
-                    $chunk,
-                    ['code_article'],
-                    ['designation', 'emplacement', 'updated_at']
-                );
-            }
-
-            $updated = count($existingLookup);
-            $total = count($records);
-
-            return new ArticleReferenceImportResult(
-                total: $total,
-                inserted: $total - $updated,
-                updated: $updated,
-                duplicateRows: $import->duplicateRows,
-                skippedBlankRows: $import->skippedBlankRows,
-            );
-        });
+        $result = $importer->import($import);
 
         return redirect()
             ->route('article-references.index')

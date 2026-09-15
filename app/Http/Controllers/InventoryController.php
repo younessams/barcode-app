@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\InventoryItem;
 use App\Models\InventorySession;
+use App\Services\ArticleReferences\ArticleReferenceExcelParser;
+use App\Services\ArticleReferences\ArticleReferenceImporter;
+use App\Services\ArticleReferences\ArticleReferenceParseException;
 use App\Services\InventoryExcelExporter;
 use App\Support\CodeArticleNormalizer;
 use Illuminate\Database\QueryException;
@@ -28,12 +31,71 @@ final class InventoryController extends Controller
         return view('inventories.index', compact('inventories'));
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(
+        Request $request,
+        ArticleReferenceExcelParser $parser,
+        ArticleReferenceImporter $importer,
+    ): RedirectResponse
     {
-        $validated = $request->validate(['name' => ['required', 'string', 'max:120'], 'zone' => ['nullable', 'string', 'max:120']]);
-        $session = InventorySession::create($validated);
+        $request->merge([
+            'zone' => $this->blankToNull($request->input('zone')),
+        ]);
 
-        return redirect()->route('inventories.show', $session->uuid);
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+            'zone' => ['nullable', 'required_with:article_reference_file', 'string', 'max:120'],
+            'article_reference_file' => [
+                'nullable',
+                'file',
+                'max:10240',
+                'mimes:xlsx,xls',
+                'mimetypes:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/octet-stream,application/zip',
+            ],
+        ], [
+            'zone.required_with' => 'Renseignez une zone avant d importer un fichier de reference.',
+        ]);
+
+        $import = null;
+
+        if ($request->hasFile('article_reference_file')) {
+            $path = $validated['article_reference_file']->getRealPath();
+
+            if (! is_string($path) || $path === '') {
+                return back()->withErrors([
+                    'article_reference_file' => 'Le fichier envoye ne peut pas etre traite.',
+                ])->withInput();
+            }
+
+            try {
+                $import = $parser->parse($path);
+            } catch (ArticleReferenceParseException $exception) {
+                return back()->withErrors([
+                    'article_reference_file' => $exception->getMessage(),
+                ])->withInput();
+            }
+        }
+
+        $session = DB::transaction(function () use ($validated, $import, $importer): InventorySession {
+            if ($import !== null) {
+                $importer->import($import);
+            }
+
+            return InventorySession::create([
+                'name' => $validated['name'],
+                'zone' => $validated['zone'] ?? null,
+            ]);
+        });
+
+        $redirect = redirect()->route('inventories.show', $session->uuid);
+
+        if ($import !== null) {
+            $redirect->with(
+                'status',
+                'Inventaire cree. Le fichier de reference de la zone a ete importe avec succes.'
+            );
+        }
+
+        return $redirect;
     }
 
     public function show(string $uuid)
@@ -180,6 +242,13 @@ final class InventoryController extends Controller
         $request->merge([
             'quantity' => str_replace(',', '.', trim((string) $request->input('quantity'))),
         ]);
+    }
+
+    private function blankToNull(mixed $value): ?string
+    {
+        $value = trim((string) $value);
+
+        return $value === '' ? null : $value;
     }
 
     private function quantityToUnits(string|int|float $quantity): int
