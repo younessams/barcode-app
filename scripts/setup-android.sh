@@ -17,12 +17,12 @@ fi
 require_command() {
     if ! command -v "$1" >/dev/null 2>&1; then
         printf 'Required command is missing: %s\n' "$1" >&2
-        printf '%s\n' 'Install the Termux packages first: pkg install git php php-gd composer unzip nodejs-lts' >&2
+        printf '%s\n' 'Install the Termux packages first: pkg install git php php-gd composer unzip nodejs-lts psmisc' >&2
         exit 1
     fi
 }
 
-for command_name in php composer node npm git; do
+for command_name in php composer node npm git fuser; do
     require_command "$command_name"
 done
 
@@ -130,6 +130,9 @@ printf '%s\\n' 'http://127.0.0.1:8000'
 printf '%s\\n' ''
 printf '%s\\n' 'Press Ctrl+C to stop.'
 printf '%s\\n' ''
+
+fuser -k 8000/tcp 2>/dev/null || true
+sleep 1
 
 exec php -c ../php-termux.ini -S 127.0.0.1:8000 ../vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php
 EOF
