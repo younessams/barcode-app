@@ -100,7 +100,7 @@ final class BarcodeLabelController extends Controller
 
         return response(File::get($path), 200, [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => $disposition.'; filename="code-128-labels.pdf"',
+            'Content-Disposition' => $disposition.'; filename="labels-'.now()->setTimezone('+01:00')->format('Y-m-d_H-i-s').'.pdf"',
         ]);
     }
 
