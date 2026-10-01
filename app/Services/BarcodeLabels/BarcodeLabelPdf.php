@@ -48,14 +48,28 @@ final class BarcodeLabelPdf
     private function drawElement(TCPDF $pdf, BarcodeLabel $label, array $element, array $style, array $layout, int $slotIndex, string $codeType): void
     {
         if ($codeType === CodeType::QR) {
-            $qr = (new QrCodeLayout)->calculate($label->code, $layout, $slotIndex);
+            $qr = (new QrCodeLayout)->calculate(
+                $label->qrPayload(),
+                $layout,
+                $slotIndex,
+                $label->emplacement !== null,
+            );
             $qrStyle = array_merge($style, ['hpadding' => QrCodeLayout::QUIET_ZONE_MODULES, 'vpadding' => QrCodeLayout::QUIET_ZONE_MODULES, 'module_width' => 1, 'module_height' => 1]);
-            $pdf->write2DBarcode($label->code, QrCodeLayout::ERROR_CORRECTION, $qr['xMm'], $qr['yMm'], $qr['totalSizeMm'], $qr['totalSizeMm'], $qrStyle, 'N', false);
+            $pdf->write2DBarcode($label->qrPayload(), QrCodeLayout::ERROR_CORRECTION, $qr['xMm'], $qr['yMm'], $qr['totalSizeMm'], $qr['totalSizeMm'], $qrStyle, 'N', false);
             $textX = $qr['textXMm'];
             $textY = $qr['yMm'] + $qr['totalSizeMm'] + $qr['textGapMm'];
             $textWidth = $layout['guides']['labelWidthMm'];
-            $textFont = $qr['textFontPt'];
-            $textHeight = $qr['textHeightMm'];
+
+            $this->drawQrText(
+                $pdf,
+                $label,
+                $qr,
+                $textX,
+                $textY,
+                $textWidth,
+            );
+
+            return;
         } else {
             $pdf->write1DBarcode($label->code, 'C128', $element['xMm'], $element['yMm'], $element['widthMm'], $element['heightMm'], 0.4, $style, 'N');
             $textX = $element['xMm'];
@@ -69,5 +83,95 @@ final class BarcodeLabelPdf
         $pdf->SetTextColor(0, 0, 0);
         $pdf->SetXY($textX, $textY);
         $pdf->Cell($textWidth, $textHeight, $label->code, 0, 0, 'C', false, '', 0, false, 'T', 'M');
+    }
+
+    /** @param array<string, mixed> $qr */
+    private function drawQrText(
+        TCPDF $pdf,
+        BarcodeLabel $label,
+        array $qr,
+        float $textX,
+        float $textY,
+        float $textWidth,
+    ): void {
+        $codeFont = $this->fitTextFont(
+            $pdf,
+            $label->codeArticle,
+            $textWidth,
+            (float) $qr['textFontPt'],
+        );
+
+        $pdf->SetFont('helvetica', 'B', $codeFont);
+        $pdf->SetTextColor(0, 0, 0);
+        $pdf->SetXY($textX, $textY);
+        $pdf->Cell(
+            $textWidth,
+            $qr['codeTextHeightMm'],
+            $label->codeArticle,
+            0,
+            0,
+            'C',
+            false,
+            '',
+            1,
+            false,
+            'T',
+            'M',
+        );
+
+        if ($label->emplacement === null) {
+            return;
+        }
+
+        $emplacementFont = $this->fitTextFont(
+            $pdf,
+            $label->emplacement,
+            $textWidth,
+            (float) $qr['emplacementTextFontPt'],
+        );
+
+        $pdf->SetFont('helvetica', 'B', $emplacementFont);
+        $pdf->SetXY(
+            $textX,
+            $textY
+            + $qr['codeTextHeightMm']
+            + $qr['emplacementTextGapMm'],
+        );
+        $pdf->Cell(
+            $textWidth,
+            $qr['emplacementTextHeightMm'],
+            $label->emplacement,
+            0,
+            0,
+            'C',
+            false,
+            '',
+            1,
+            false,
+            'T',
+            'M',
+        );
+    }
+
+    private function fitTextFont(
+        TCPDF $pdf,
+        string $text,
+        float $widthMm,
+        float $preferredSize,
+    ): float {
+        $minimumSize = min($preferredSize, 4.0);
+        $size = $preferredSize;
+
+        while ($size > $minimumSize) {
+            $pdf->SetFont('helvetica', 'B', $size);
+
+            if ($pdf->GetStringWidth($text) <= $widthMm) {
+                break;
+            }
+
+            $size = round($size - 0.2, 1);
+        }
+
+        return max($minimumSize, $size);
     }
 }

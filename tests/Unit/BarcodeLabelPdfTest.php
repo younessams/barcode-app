@@ -5,6 +5,7 @@ namespace Tests\Unit;
 use App\Services\BarcodeLabels\A4LabelPresetCatalog;
 use App\Services\BarcodeLabels\BarcodeLabel;
 use App\Services\BarcodeLabels\BarcodeLabelPdf;
+use App\Services\BarcodeLabels\QrCodeLayout;
 use Tests\TestCase;
 
 final class BarcodeLabelPdfTest extends TestCase
@@ -56,5 +57,40 @@ final class BarcodeLabelPdfTest extends TestCase
             $this->assertStringContainsString('/MediaBox [0.000000 0.000000 595.275591 841.889764]', $content);
             $this->assertStringNotContainsString('/Subtype /Image', $content);
         }
+    }
+
+    public function test_qr_labels_keep_the_complete_payload_but_expose_separate_visible_values(): void
+    {
+        $label = new BarcodeLabel(
+            '6ROULEMENT-086&A001',
+            '6ROULEMENT-086',
+            'A001',
+        );
+
+        $this->assertSame('6ROULEMENT-086&A001', $label->qrPayload());
+        $this->assertSame('6ROULEMENT-086', $label->codeArticle);
+        $this->assertSame('A001', $label->emplacement);
+
+        $content = (new BarcodeLabelPdf)->render(
+            [$label],
+            (new A4LabelPresetCatalog)->layout('70x37'),
+            'qr',
+        );
+
+        $this->assertStringStartsWith('%PDF', $content);
+        $this->assertStringNotContainsString('/Subtype /Image', $content);
+    }
+
+    public function test_qr_label_without_emplacement_uses_only_the_code_text_line(): void
+    {
+        $layout = (new A4LabelPresetCatalog)->layout('70x37');
+        $qr = (new QrCodeLayout)->calculate(
+            'VIS-125',
+            $layout,
+            0,
+        );
+
+        $this->assertNull($qr['emplacementTextFontPt']);
+        $this->assertSame(0.0, $qr['emplacementTextHeightMm']);
     }
 }

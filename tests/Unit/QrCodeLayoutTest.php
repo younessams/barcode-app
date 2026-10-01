@@ -95,4 +95,52 @@ final class QrCodeLayoutTest extends TestCase
         $this->assertSame($qr['matrixModules'] + (2 * QrCodeLayout::QUIET_ZONE_MODULES), $qr['totalModules']);
         $this->assertGreaterThanOrEqual(QrCodeLayout::MIN_MODULE_MM, $qr['moduleMm']);
     }
+
+    public function test_70x37_emplacement_text_fits_every_slot_without_crossing_label_boundaries(): void
+    {
+        $layout = (new A4LabelPresetCatalog)->layout('70x37');
+        $calculator = new QrCodeLayout;
+        $guides = $layout['guides'];
+
+        foreach ($layout['elements'] as $slotIndex => $element) {
+            $qr = $calculator->calculate(
+                '6ROULEMENT-086&A001',
+                $layout,
+                $slotIndex,
+                true,
+            );
+            $labelBottom = $element['yMm'] - 1.0 + $guides['labelHeightMm'];
+            $textBottom = $qr['yMm']
+                + $qr['totalSizeMm']
+                + $qr['textGapMm']
+                + $qr['textHeightMm'];
+
+            $this->assertLessThanOrEqual(
+                $labelBottom,
+                $textBottom,
+                'QR text exceeds the physical label in slot '.$slotIndex.'.'
+            );
+        }
+    }
+
+    public function test_long_70x37_payload_keeps_its_qr_and_text_block_inside_every_label(): void
+    {
+        $layout = (new A4LabelPresetCatalog)->layout('70x37');
+        $calculator = new QrCodeLayout;
+        $guides = $layout['guides'];
+        $payload = 'LONG-REPRESENTATIVE-ARTICLE-000123&A001';
+
+        foreach ($layout['elements'] as $slotIndex => $element) {
+            $qr = $calculator->calculate($payload, $layout, $slotIndex, true);
+            $labelRight = $element['xMm'] - 6.75 + $guides['labelWidthMm'];
+            $labelBottom = $element['yMm'] - 1.0 + $guides['labelHeightMm'];
+
+            $this->assertGreaterThanOrEqual($element['xMm'] - 6.75, $qr['xMm']);
+            $this->assertLessThanOrEqual($labelRight, $qr['xMm'] + $qr['totalSizeMm']);
+            $this->assertLessThanOrEqual(
+                $labelBottom,
+                $qr['yMm'] + $qr['totalSizeMm'] + $qr['textGapMm'] + $qr['textHeightMm'],
+            );
+        }
+    }
 }

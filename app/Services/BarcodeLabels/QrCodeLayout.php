@@ -26,13 +26,17 @@ final class QrCodeLayout
 
     private const PRESET_70X37_COLUMN_DROP_MM = 1.20;
 
-    /** @return array{matrixModules:int, totalModules:int, moduleMm:float, totalSizeMm:float, xMm:float, yMm:float, textXMm:float, textFontPt:float, textGapMm:float, textHeightMm:float, compact:bool} */
-    public function calculate(string $value, array $layout, int $slotIndex): array
-    {
+    /** @return array{matrixModules:int, totalModules:int, moduleMm:float, totalSizeMm:float, xMm:float, yMm:float, textXMm:float, textFontPt:float, textGapMm:float, textHeightMm:float, codeTextHeightMm:float, emplacementTextFontPt:?float, emplacementTextGapMm:float, emplacementTextHeightMm:float, compact:bool} */
+    public function calculate(
+        string $value,
+        array $layout,
+        int $slotIndex,
+        bool $hasEmplacement = false,
+    ): array {
         $matrix = $this->matrix($value);
         $guides = $layout['guides'];
         $preset = $this->presetForSlot($guides, $slotIndex);
-        $text = $this->textProfile($preset['labelHeightMm']);
+        $text = $this->textProfile($preset['labelHeightMm'], $hasEmplacement);
         $safeHorizontalMm = 1.0;
         $safeTopMm = 0.5;
         $safeBottomMm = 0.5;
@@ -82,9 +86,13 @@ final class QrCodeLayout
             'xMm' => round($preset['xMm'] + (($preset['labelWidthMm'] - $totalSizeMm) / 2) + $horizontalOffsetMm, 3),
             'yMm' => round($preset['yMm'] + $safeTopMm - $rowAlignmentMm - $lowerRowLiftMm + $verticalDropMm + $columnDropMm, 3),
             'textXMm' => round($preset['xMm'], 3),
-            'textFontPt' => $text['fontPt'],
+            'textFontPt' => $text['codeFontPt'],
             'textGapMm' => $textGapMm,
             'textHeightMm' => $text['heightMm'],
+            'codeTextHeightMm' => $text['codeHeightMm'],
+            'emplacementTextFontPt' => $text['emplacementFontPt'],
+            'emplacementTextGapMm' => $text['emplacementGapMm'],
+            'emplacementTextHeightMm' => $text['emplacementHeightMm'],
             'compact' => $moduleMm < self::RECOMMENDED_MODULE_MM,
         ];
     }
@@ -120,15 +128,27 @@ final class QrCodeLayout
         ];
     }
 
-    /** @return array{fontPt:float,gapMm:float,heightMm:float} */
-    private function textProfile(float $labelHeightMm): array
-    {
+    /** @return array{codeFontPt:float,gapMm:float,heightMm:float,codeHeightMm:float,emplacementFontPt:?float,emplacementGapMm:float,emplacementHeightMm:float} */
+    private function textProfile(
+        float $labelHeightMm,
+        bool $hasEmplacement,
+    ): array {
+        if (! $hasEmplacement) {
+            return match (true) {
+                $labelHeightMm <= 21.2 => ['codeFontPt' => 5.6, 'gapMm' => 0.2, 'heightMm' => 3.2, 'codeHeightMm' => 3.2, 'emplacementFontPt' => null, 'emplacementGapMm' => 0.0, 'emplacementHeightMm' => 0.0],
+                $labelHeightMm <= 29.7 => ['codeFontPt' => 6.5, 'gapMm' => 0.25, 'heightMm' => 4.0, 'codeHeightMm' => 4.0, 'emplacementFontPt' => null, 'emplacementGapMm' => 0.0, 'emplacementHeightMm' => 0.0],
+                $labelHeightMm <= 37.125 => ['codeFontPt' => 7.8, 'gapMm' => 0.25, 'heightMm' => 4.6, 'codeHeightMm' => 4.6, 'emplacementFontPt' => null, 'emplacementGapMm' => 0.0, 'emplacementHeightMm' => 0.0],
+                $labelHeightMm <= 74.0 => ['codeFontPt' => 8.2, 'gapMm' => 0.25, 'heightMm' => 4.8, 'codeHeightMm' => 4.8, 'emplacementFontPt' => null, 'emplacementGapMm' => 0.0, 'emplacementHeightMm' => 0.0],
+                default => ['codeFontPt' => 8.5, 'gapMm' => 0.25, 'heightMm' => 5.0, 'codeHeightMm' => 5.0, 'emplacementFontPt' => null, 'emplacementGapMm' => 0.0, 'emplacementHeightMm' => 0.0],
+            };
+        }
+
         return match (true) {
-            $labelHeightMm <= 21.2 => ['fontPt' => 5.6, 'gapMm' => 0.2, 'heightMm' => 3.2],
-            $labelHeightMm <= 29.7 => ['fontPt' => 6.5, 'gapMm' => 0.25, 'heightMm' => 4.0],
-            $labelHeightMm <= 37.125 => ['fontPt' => 7.8, 'gapMm' => 0.25, 'heightMm' => 4.6],
-            $labelHeightMm <= 74.0 => ['fontPt' => 8.2, 'gapMm' => 0.25, 'heightMm' => 4.8],
-            default => ['fontPt' => 8.5, 'gapMm' => 0.25, 'heightMm' => 5.0],
+            $labelHeightMm <= 21.2 => ['codeFontPt' => 4.4, 'gapMm' => 0.2, 'heightMm' => 5.3, 'codeHeightMm' => 2.2, 'emplacementFontPt' => 5.6, 'emplacementGapMm' => 0.1, 'emplacementHeightMm' => 3.0],
+            $labelHeightMm <= 29.7 => ['codeFontPt' => 5.2, 'gapMm' => 0.25, 'heightMm' => 5.9, 'codeHeightMm' => 2.6, 'emplacementFontPt' => 6.8, 'emplacementGapMm' => 0.1, 'emplacementHeightMm' => 3.2],
+            $labelHeightMm <= 37.125 => ['codeFontPt' => 6.2, 'gapMm' => 0.25, 'heightMm' => 7.3, 'codeHeightMm' => 3.2, 'emplacementFontPt' => 8.0, 'emplacementGapMm' => 0.1, 'emplacementHeightMm' => 4.0],
+            $labelHeightMm <= 74.0 => ['codeFontPt' => 6.8, 'gapMm' => 0.25, 'heightMm' => 8.2, 'codeHeightMm' => 3.5, 'emplacementFontPt' => 8.8, 'emplacementGapMm' => 0.2, 'emplacementHeightMm' => 4.5],
+            default => ['codeFontPt' => 7.0, 'gapMm' => 0.25, 'heightMm' => 8.6, 'codeHeightMm' => 3.7, 'emplacementFontPt' => 9.0, 'emplacementGapMm' => 0.2, 'emplacementHeightMm' => 4.7],
         };
     }
 }

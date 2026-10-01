@@ -2,7 +2,7 @@
 
 use App\Http\Controllers\BarcodeLabelController;
 use App\Http\Controllers\InventoryController;
-use App\Http\Controllers\ArticleReferenceController;
+use App\Http\Controllers\ManualCatalogueController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [BarcodeLabelController::class, 'index'])->name('labels.index');
@@ -10,18 +10,9 @@ Route::post('/labels/headers', [BarcodeLabelController::class, 'headers'])->name
 Route::post('/labels', [BarcodeLabelController::class, 'generate'])->name('labels.generate');
 Route::get('/labels/{token}.pdf', [BarcodeLabelController::class, 'pdf'])->name('labels.pdf');
 Route::get('/inventaire', [InventoryController::class, 'index'])->name('inventories.index');
-Route::post('/inventaire', [InventoryController::class, 'store'])->name('inventories.store');
 Route::get('/inventaire/{uuid}', [InventoryController::class, 'show'])->name('inventories.show');
-Route::get('/inventaire/{uuid}/export', [InventoryController::class, 'export'])->name('inventories.export');
-Route::post('/inventaire/{uuid}/complete', [InventoryController::class, 'complete'])->name('inventories.complete');
-Route::post('/inventaire/{uuid}/reopen', [InventoryController::class, 'reopen'])->name('inventories.reopen');
-Route::post('/inventaire/{uuid}/items', [InventoryController::class, 'storeItem'])->name('inventories.items.store');
-Route::patch('/inventaire/{uuid}/items/{itemUuid}', [InventoryController::class, 'updateItem'])->name('inventories.items.update');
-Route::delete('/inventaire/{uuid}/items/{itemUuid}', [InventoryController::class, 'destroyItem'])->name('inventories.items.destroy');
+Route::post('/inventaire/export', [InventoryController::class, 'export'])->name('inventories.export');
 
-Route::get('/article-references', [ArticleReferenceController::class, 'index'])->name('article-references.index');
-Route::post('/article-references/import', [ArticleReferenceController::class, 'import'])->name('article-references.import');
-
-Route::get('/catalogue', [\App\Http\Controllers\ManualCatalogueController::class, 'index'])->name('catalogue.index');
-Route::post('/catalogue', [\App\Http\Controllers\ManualCatalogueController::class, 'generate'])->name('catalogue.generate');
-Route::get('/catalogue/{token}.pdf', [\App\Http\Controllers\ManualCatalogueController::class, 'pdf'])->name('catalogue.pdf');
+Route::get('/catalogue', [ManualCatalogueController::class, 'index'])->name('catalogue.index');
+Route::post('/catalogue', [ManualCatalogueController::class, 'generate'])->name('catalogue.generate');
+Route::get('/catalogue/{token}.pdf', [ManualCatalogueController::class, 'pdf'])->name('catalogue.pdf');

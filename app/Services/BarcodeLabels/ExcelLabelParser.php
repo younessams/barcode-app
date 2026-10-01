@@ -2,7 +2,6 @@
 
 namespace App\Services\BarcodeLabels;
 
-use App\Support\CodeArticleNormalizer;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -52,16 +51,22 @@ final class ExcelLabelParser
                     continue;
                 }
 
-                $code = CodeArticleNormalizer::normalize($this->cellString($sheet->getCell([$codeColumn, $row])));
-                if ($code === '') {
-                    continue;
+                try {
+                    $payload = ArticleQrPayload::parse(
+                        $this->cellString($sheet->getCell([$codeColumn, $row]))
+                    );
+                } catch (ArticleQrPayloadParseException $exception) {
+                    throw new ExcelLabelParseException(
+                        'La ligne Excel '.$row.' contient un payload invalide : '
+                        .$exception->getMessage()
+                    );
                 }
 
-                if (preg_match('/^[\x20-\x7E]+$/D', $code) !== 1) {
-                    throw new ExcelLabelParseException('La ligne Excel '.$row.' contient une valeur incompatible avec Code 128 : "'.mb_substr($code, 0, 80).'".');
+                if (preg_match('/^[\x20-\x7E]+$/D', $payload->payload) !== 1) {
+                    throw new ExcelLabelParseException('La ligne Excel '.$row.' contient une valeur incompatible avec Code 128 : "'.mb_substr($payload->payload, 0, 80).'".');
                 }
 
-                $labels[] = new BarcodeLabel($code);
+                $labels[] = BarcodeLabel::fromArticleQrPayload($payload);
             }
 
             if ($labels === []) {

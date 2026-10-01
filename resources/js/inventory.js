@@ -1,5 +1,6 @@
 import { BrowserMultiFormatReader } from '@zxing/browser';
-import { Camera, CheckCircle2, ChevronDown, CircleAlert, createIcons, Flashlight, FlashlightOff, Keyboard, Minus, Pencil, Plus, RefreshCw, Save, Trash2, X } from 'lucide';
+import { Camera, CheckCircle2, ChevronDown, CircleAlert, createIcons, Download, Flashlight, FlashlightOff, Keyboard, Minus, Pencil, Plus, RefreshCw, Save, Trash2, X } from 'lucide';
+import { InventoryStore, inventorySummary, parseInventoryPayload } from './inventory-state';
 
 const app = document.querySelector('.app');
 const video = document.querySelector('#camera-video');
@@ -10,6 +11,7 @@ const form = document.querySelector('#item-form');
 const codeInput = document.querySelector('#code_article');
 const detectedPanel = document.querySelector('#detected-panel');
 const detectedCode = document.querySelector('#detected-code');
+const detectedEmplacement = document.querySelector('#detected-emplacement');
 const detectedQuantity = document.querySelector('#detected-quantity');
 const duplicatePanel = document.querySelector('#duplicate-panel');
 const message = document.querySelector('#message');
@@ -19,11 +21,21 @@ const retryButton = document.querySelector('#retry-camera');
 const manualToggle = document.querySelector('#manual-toggle');
 const manualEntry = document.querySelector('#manual-entry');
 const manualSave = document.querySelector('#manual-save');
-const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
 const toast = document.querySelector('#action-toast');
 const toastIcon = document.querySelector('#action-toast-icon');
 const toastMessage = document.querySelector('#action-toast-message');
 const toastProgress = document.querySelector('#action-toast-progress');
+const workspace = document.querySelector('#inventory-workspace');
+const missingInventory = document.querySelector('#inventory-missing');
+const scannerSection = document.querySelector('#scanner-section');
+const inventoryName = document.querySelector('#inventory-name');
+const inventoryMeta = document.querySelector('#inventory-meta');
+const exportButton = document.querySelector('#export-inventory');
+const exportMessage = document.querySelector('#export-message');
+const completeInventory = document.querySelector('#complete-inventory');
+const reopenInventory = document.querySelector('#reopen-inventory');
+const store = new InventoryStore();
+const inventoryUuid = app?.dataset.inventory;
 
 const READY = 'READY';
 const DETECTED = 'DETECTED';
@@ -39,8 +51,9 @@ let zxingBusy = false;
 let scanCandidateCode = null;
 let scanCandidateCount = 0;
 let scanCandidateSeenAt = 0;
-let pendingCode = null;
+let pendingArticle = null;
 let pendingDuplicate = null;
+let inventorySession = null;
 let freezeTimer = null;
 let scanAudioContext = null;
 let torchSupported = false;
@@ -55,11 +68,7 @@ const SCAN_CONFIRM_WINDOW_MS = 650;
 const SCAN_MIN_OVERLAP = 0.45;
 const ZXING_SCAN_DELAY_MS = 80;
 
-createIcons({ icons: { Camera, ChevronDown, Keyboard, Minus, Pencil, Plus, RefreshCw, Save, Trash2, X } });
-
-function normalizeCodeArticle(code) {
-    return String(code ?? '').trim().toLocaleUpperCase();
-}
+createIcons({ icons: { Camera, ChevronDown, Download, Keyboard, Minus, Pencil, Plus, RefreshCw, Save, Trash2, X } });
 
 function syncQuantityModalViewport() {
     if (!detectedPanel || detectedPanel.hidden) return;
@@ -395,11 +404,16 @@ function resetTorchState() {
     }
 }
 
-function updateSummary(payload) {
+function updateSummary() {
     const itemsCount = document.querySelector('#items-count');
     const totalQuantity = document.querySelector('#total-quantity');
-    if (itemsCount && payload.items_count !== undefined) itemsCount.textContent = payload.items_count;
-    if (totalQuantity && payload.total_quantity !== undefined) totalQuantity.textContent = payload.total_quantity;
+
+    if (!inventorySession) return;
+
+    const summary = inventorySummary(inventorySession);
+
+    if (itemsCount) itemsCount.textContent = summary.itemsCount;
+    if (totalQuantity) totalQuantity.textContent = summary.totalQuantity;
 }
 
 function stopDecoder() {
@@ -793,12 +807,20 @@ function zxingScan() {
 }
 
 function showDetected(code, source = 'manual') {
-    const normalizedCode = normalizeCodeArticle(code);
+    let article;
 
-    if (scannerState !== READY || !normalizedCode) return;
+    try {
+        article = parseInventoryPayload(code);
+    } catch (error) {
+        setMessage(error.message || 'Le code detecte est invalide.', true);
+        showToast(error.message || 'Le code detecte est invalide.', 'danger', 3600);
+        return;
+    }
+
+    if (scannerState !== READY || !inventorySession) return;
 
     scannerState = DETECTED;
-    pendingCode = normalizedCode;
+    pendingArticle = article;
     stopDecoder();
 
     if (source === 'camera') {
@@ -807,7 +829,9 @@ function showDetected(code, source = 'manual') {
         freezeCameraFrame();
     }
 
-    detectedCode.textContent = normalizedCode;
+    detectedCode.textContent = article.codeArticle;
+    detectedEmplacement.textContent = article.emplacement || '';
+    detectedEmplacement.hidden = article.emplacement === null;
     detectedQuantity.value = '1';
     detectedPanel.hidden = false;
     document.body.classList.add('quantity-modal-open');
@@ -944,7 +968,7 @@ function resumeScanning() {
         detectedPanel.style.removeProperty('height');
     }
 
-    pendingCode = null;
+    pendingArticle = null;
     pendingDuplicate = null;
     scannerState = READY;
     document.body.classList.remove('quantity-modal-open');
@@ -957,38 +981,102 @@ function resumeScanning() {
 }
 
 function renderItem(item) {
-    let row = document.querySelector(`[data-item="${CSS.escape(item.uuid)}"]`);
-    if (!row) {
-        row = document.createElement('tr');
-        row.dataset.item = item.uuid;
-        row.innerHTML = '<td></td><td class="quantity"></td><td>Disponible a l export</td><td><div class="actions item-actions"><button class="item-action-button edit-item" type="button" aria-label="Modifier l article" title="Modifier"><i data-lucide="Pencil"></i></button><button class="item-action-button delete-item" type="button" aria-label="Supprimer l article" title="Supprimer"><i data-lucide="Trash2"></i></button></div></td>';
-        document.querySelector('#items-body').prepend(row);
+    const row = document.createElement('tr');
+    row.dataset.item = item.uuid;
+    row.dataset.search = `${item.codeArticle} ${item.emplacement || ''}`.toLocaleLowerCase();
+
+    const code = document.createElement('td');
+    code.textContent = item.codeArticle;
+    const emplacement = document.createElement('td');
+    emplacement.textContent = item.emplacement || '';
+    const quantity = document.createElement('td');
+    quantity.className = 'quantity';
+    quantity.textContent = item.quantity;
+    const actions = document.createElement('td');
+
+    if (inventorySession.status === 'in_progress') {
+        const actionGroup = document.createElement('div');
+        actionGroup.className = 'actions item-actions';
+        actionGroup.innerHTML = '<button class="item-action-button edit-item" type="button" aria-label="Modifier l article" title="Modifier"><i data-lucide="Pencil"></i></button><button class="item-action-button delete-item" type="button" aria-label="Supprimer l article" title="Supprimer"><i data-lucide="Trash2"></i></button>';
+        actions.append(actionGroup);
     }
-    row.dataset.code = item.code_article.toLocaleLowerCase();
-    row.firstElementChild.textContent = item.code_article;
-    row.querySelector('.quantity').textContent = item.quantity;
-    createIcons({ icons: { Pencil, Trash2 } });
-    document.querySelector('#empty-items').hidden = true;
+
+    row.append(code, emplacement, quantity, actions);
+    itemsBody.append(row);
 }
 
-async function saveItem(code, quantity, mode = null) {
-    if (scannerState === SAVING) return;
+function renderItems() {
+    itemsBody.replaceChildren();
+
+    if (!inventorySession) return;
+
+    inventorySession.items.slice().reverse().forEach(renderItem);
+    document.querySelector('#empty-items').hidden = inventorySession.items.length > 0;
+    createIcons({ icons: { Pencil, Trash2 } });
+}
+
+function renderInventorySession() {
+    if (!inventorySession) return;
+
+    const completed = inventorySession.status === 'completed';
+    inventoryName.textContent = inventorySession.name;
+    inventoryMeta.textContent = `${inventorySession.zone || 'Zone non renseignee'} · ${completed ? 'Termine' : 'En cours'}`;
+    scannerSection.hidden = completed;
+    completeInventory.hidden = completed;
+    reopenInventory.hidden = !completed;
+
+    if (completed) {
+        stopCamera();
+        scannerState = READY;
+    }
+
+    renderItems();
+    updateSummary();
+}
+
+function loadInventorySession() {
+    inventorySession = inventoryUuid ? store.getSession(inventoryUuid) : null;
+
+    if (!inventorySession) {
+        missingInventory.hidden = false;
+        workspace.hidden = true;
+        return;
+    }
+
+    missingInventory.hidden = true;
+    workspace.hidden = false;
+    renderInventorySession();
+}
+
+function saveItem(article, quantity, mode = null) {
+    if (scannerState === SAVING || !article || !inventorySession) return;
+
     scannerState = SAVING;
-    const data = new FormData();
-    data.append('code_article', code);
-    data.append('quantity', quantity);
-    if (mode) data.append('mode', mode);
+
     try {
-        const response = await fetch(app.dataset.itemUrl, { method: 'POST', body: data, headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' } });
-        const payload = await response.json();
-        if (response.status === 409 && payload.duplicate) {
+        const result = store.saveItem(inventorySession.uuid, article, quantity, mode);
+
+        if (result.duplicate) {
             scannerState = DETECTED;
-            pendingDuplicate = { code: payload.item.code_article, quantity };
+            pendingDuplicate = { article, quantity };
             duplicatePanel.hidden = false;
             duplicatePanel.replaceChildren();
-            const title = document.createElement('strong'); title.textContent = 'Article deja compte';
-            const code = document.createElement('p'); code.textContent = payload.item.code_article;
-            const quantities = document.createElement('p'); quantities.innerHTML = `Quantite actuelle : ${Number(payload.item.quantity)}<br>Nouvelle quantite : ${Number(quantity)}`;
+
+            const title = document.createElement('strong');
+            title.textContent = 'Article deja compte';
+            const code = document.createElement('p');
+            code.textContent = result.item.codeArticle;
+
+            if (result.item.emplacement) {
+                const emplacement = document.createElement('p');
+                emplacement.textContent = result.item.emplacement;
+                duplicatePanel.append(title, code, emplacement);
+            } else {
+                duplicatePanel.append(title, code);
+            }
+
+            const quantities = document.createElement('p');
+            quantities.textContent = `Quantite actuelle : ${result.item.quantity} · Nouvelle quantite : ${quantity}`;
             const actions = document.createElement('div');
             actions.className = 'duplicate-actions';
 
@@ -996,13 +1084,13 @@ async function saveItem(code, quantity, mode = null) {
             add.type = 'button';
             add.className = 'duplicate-action duplicate-add';
             add.innerHTML = '<i data-lucide="Plus"></i><span>Ajouter</span>';
-            add.addEventListener('click', () => saveItem(pendingDuplicate.code, pendingDuplicate.quantity, 'add'));
+            add.addEventListener('click', () => saveItem(pendingDuplicate.article, pendingDuplicate.quantity, 'add'));
 
             const replace = document.createElement('button');
             replace.type = 'button';
             replace.className = 'duplicate-action duplicate-replace';
             replace.innerHTML = '<i data-lucide="RefreshCw"></i><span>Remplacer</span>';
-            replace.addEventListener('click', () => saveItem(pendingDuplicate.code, pendingDuplicate.quantity, 'replace'));
+            replace.addEventListener('click', () => saveItem(pendingDuplicate.article, pendingDuplicate.quantity, 'replace'));
 
             const cancel = document.createElement('button');
             cancel.type = 'button';
@@ -1011,20 +1099,20 @@ async function saveItem(code, quantity, mode = null) {
             cancel.addEventListener('click', resumeScanning);
 
             actions.append(add, replace, cancel);
-            duplicatePanel.append(title, code, quantities, actions);
+            duplicatePanel.append(quantities, actions);
             createIcons({ icons: { Plus, RefreshCw, X } });
             return;
         }
-        if (!response.ok) throw new Error(payload.message || 'La saisie n a pas pu etre enregistree.');
-        renderItem(payload.item);
-        updateSummary(payload);
+
+        inventorySession = result.session;
+        renderInventorySession();
 
         if (mode === 'add') {
-            showToast(`Quantite ajoutee a ${payload.item.code_article}`, 'success');
+            showToast(`Quantite ajoutee a ${result.item.codeArticle}`, 'success');
         } else if (mode === 'replace') {
-            showToast(`Quantite remplacee pour ${payload.item.code_article}`, 'info');
+            showToast(`Quantite remplacee pour ${result.item.codeArticle}`, 'info');
         } else {
-            showToast(`Article ${payload.item.code_article} enregistre`, 'success');
+            showToast(`Article ${result.item.codeArticle} enregistre`, 'success');
         }
 
         if (form) form.reset();
@@ -1036,10 +1124,55 @@ async function saveItem(code, quantity, mode = null) {
     }
 }
 
+async function exportInventory() {
+    if (!inventorySession || !exportButton) return;
+
+    exportButton.disabled = true;
+    exportButton.setAttribute('aria-busy', 'true');
+    if (exportMessage) exportMessage.textContent = 'Preparation du fichier Excel...';
+
+    try {
+        const response = await fetch(app.dataset.exportUrl, {
+            method: 'POST',
+            headers: {
+                Accept: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+            },
+            body: JSON.stringify(inventorySession),
+        });
+
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            throw new Error(payload.message || 'L export de l inventaire a echoue.');
+        }
+
+        const blob = await response.blob();
+        const downloadUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        const disposition = response.headers.get('Content-Disposition') || '';
+        const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] || 'inventaire.xlsx';
+
+        link.href = downloadUrl;
+        link.download = filename;
+        document.body.append(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(downloadUrl);
+        if (exportMessage) exportMessage.textContent = 'Fichier Excel pret au telechargement.';
+    } catch (error) {
+        if (exportMessage) exportMessage.textContent = error.message || 'L export de l inventaire a echoue.';
+        showToast(error.message || 'L export de l inventaire a echoue.', 'danger', 3600);
+    } finally {
+        exportButton.disabled = false;
+        exportButton.removeAttribute('aria-busy');
+    }
+}
+
 function toggleManual() {
     const open = manualEntry.hidden;
     manualEntry.hidden = !open;
-    manualSave.hidden = !open;
+    if (manualSave) manualSave.hidden = !open;
     manualToggle.setAttribute('aria-expanded', String(open));
     if (open) codeInput.focus();
 }
@@ -1048,12 +1181,12 @@ if (startButton) startButton.addEventListener('click', startCamera);
 if (torchButton) torchButton.addEventListener('click', toggleTorch);
 if (retryButton) retryButton.addEventListener('click', startCamera);
 if (manualToggle) manualToggle.addEventListener('click', toggleManual);
-if (document.querySelector('#save-detected')) document.querySelector('#save-detected').addEventListener('click', () => saveItem(pendingCode, detectedQuantity.value));
+if (exportButton) exportButton.addEventListener('click', exportInventory);
+if (document.querySelector('#save-detected')) document.querySelector('#save-detected').addEventListener('click', () => saveItem(pendingArticle, detectedQuantity.value));
 if (document.querySelector('#cancel-detected')) document.querySelector('#cancel-detected').addEventListener('click', resumeScanning);
 if (form) form.addEventListener('submit', (event) => {
     event.preventDefault();
-    const code = codeInput.value.trim();
-    if (code) showDetected(code, 'manual');
+    showDetected(codeInput.value, 'manual');
 });
 
 if (detectedQuantity) {
@@ -1090,11 +1223,11 @@ document.querySelectorAll('[data-detected-step]').forEach((button) => button.add
 const search = document.querySelector('#search');
 if (search) search.addEventListener('input', (event) => {
     const query = event.target.value.toLocaleLowerCase().trim();
-    document.querySelectorAll('#items-body tr').forEach((row) => { row.hidden = query !== '' && !row.dataset.code.includes(query); });
+    document.querySelectorAll('#items-body tr').forEach((row) => { row.hidden = query !== '' && !row.dataset.search.includes(query); });
 });
 
 const itemsBody = document.querySelector('#items-body');
-if (itemsBody) itemsBody.addEventListener('click', async (event) => {
+if (itemsBody) itemsBody.addEventListener('click', (event) => {
     const row = event.target.closest('tr');
     if (!row) return;
     const itemUuid = row.dataset.item;
@@ -1102,46 +1235,56 @@ if (itemsBody) itemsBody.addEventListener('click', async (event) => {
         if (!window.confirm('Supprimer cet article de l inventaire ?')) return;
 
         const articleCode = row.firstElementChild?.textContent?.trim() || 'Article';
-        const response = await fetch(`${app.dataset.itemUrl}/${itemUuid}`, { method: 'DELETE', headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' } });
-        const payload = await response.json();
-
-        if (!response.ok) {
-            const errorMessage = payload.message || 'Suppression impossible.';
-            setMessage(errorMessage, true);
-            showToast(errorMessage, 'danger', 3600);
-            return;
+        try {
+            inventorySession = store.deleteItem(inventorySession.uuid, itemUuid);
+            renderInventorySession();
+            showToast(`Article ${articleCode} supprime`, 'danger');
+        } catch (error) {
+            setMessage(error.message || 'Suppression impossible.', true);
+            showToast(error.message || 'Suppression impossible.', 'danger', 3600);
         }
-
-        row.remove();
-        updateSummary(payload);
-        document.querySelector('#empty-items').hidden = document.querySelectorAll('#items-body tr').length > 0;
-        showToast(`Article ${articleCode} supprime`, 'danger');
     }
     if (event.target.closest('.edit-item')) {
         const quantity = window.prompt('Nouvelle quantite', row.querySelector('.quantity').textContent);
         if (quantity === null) return;
-        const data = new FormData(); data.append('quantity', quantity); data.append('_method', 'PATCH');
-        const response = await fetch(`${app.dataset.itemUrl}/${itemUuid}`, { method: 'POST', body: data, headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' } });
-        const payload = await response.json();
-
-        if (!response.ok) {
-            const errorMessage = payload.message || 'Quantite invalide.';
-            setMessage(errorMessage, true);
-            showToast(errorMessage, 'danger', 3600);
-            return;
+        try {
+            const result = store.updateItem(inventorySession.uuid, itemUuid, quantity);
+            inventorySession = result.session;
+            renderInventorySession();
+            showToast(`Quantite de ${result.item.codeArticle} mise a jour`, 'info');
+        } catch (error) {
+            setMessage(error.message || 'Quantite invalide.', true);
+            showToast(error.message || 'Quantite invalide.', 'danger', 3600);
         }
-
-        renderItem(payload.item);
-        updateSummary(payload);
-        showToast(`Quantite de ${payload.item.code_article} mise a jour`, 'info');
     }
 });
 
-const completeForm = document.querySelector('#complete-form');
-if (completeForm) completeForm.addEventListener('submit', (event) => {
+if (completeInventory) completeInventory.addEventListener('click', () => {
     const count = document.querySelector('#items-count').textContent;
-    if (!window.confirm(`Vous avez compte ${count} references. Voulez-vous cloturer cet inventaire ?`)) event.preventDefault();
+    if (!window.confirm(`Vous avez compte ${count} references. Voulez-vous cloturer cet inventaire ?`)) return;
+
+    try {
+        inventorySession = store.complete(inventorySession.uuid);
+        renderInventorySession();
+        showToast('Inventaire cloture.', 'success');
+    } catch (error) {
+        setMessage(error.message || 'Cloture impossible.', true);
+        showToast(error.message || 'Cloture impossible.', 'danger', 3600);
+    }
 });
+
+if (reopenInventory) reopenInventory.addEventListener('click', () => {
+    try {
+        inventorySession = store.reopen(inventorySession.uuid);
+        renderInventorySession();
+        showToast('Inventaire rouvert.', 'info');
+    } catch (error) {
+        setMessage(error.message || 'Reouverture impossible.', true);
+        showToast(error.message || 'Reouverture impossible.', 'danger', 3600);
+    }
+});
+
+loadInventorySession();
 
 document.addEventListener('visibilitychange', () => {
     if (document.hidden) {

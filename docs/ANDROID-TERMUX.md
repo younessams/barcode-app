@@ -14,7 +14,7 @@ Open Termux and paste the whole block:
 
 ```sh
 pkg update -y
-pkg install -y git php php-gd composer unzip nodejs-lts
+pkg install -y git php php-gd composer unzip nodejs-lts psmisc
 termux-setup-storage
 
 if [ -e "$HOME/barcode-app" ]; then
@@ -65,6 +65,7 @@ The exact Termux packages used by the tested setup are:
 - `unzip`
 - `nodejs-lts` (needed once for `npm ci` and `npm run build`)
 - `git` (used by the coworker clone block)
+- `psmisc` (provides `fuser`, used to free port 8000 before startup)
 
 The project requires PHP `>=8.2`. PhpSpreadsheet also requires GD, XML-related extensions, ZIP, zlib, iconv, and file handling support. TCPDF requires cURL. The setup runs `composer check-platform-reqs --no-dev` and stops if the phone does not satisfy the locked dependencies.
 
@@ -100,7 +101,7 @@ php -c ../php-termux.ini \
 If a required command is missing, install the packages again with:
 
 ```sh
-pkg install -y git php php-gd composer unzip nodejs-lts
+pkg install -y git php php-gd composer unzip nodejs-lts psmisc
 ```
 
 Do not use `--ignore-platform-reqs`, do not copy the Windows `vendor` directory, and do not copy the PC `.env`. `public/build` is generated during setup and is used by the browser at runtime.

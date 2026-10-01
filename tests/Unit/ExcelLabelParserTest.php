@@ -106,6 +106,33 @@ final class ExcelLabelParserTest extends TestCase
         ));
     }
 
+    public function test_qr_payloads_expose_separate_code_article_and_emplacement(): void
+    {
+        $labels = (new ExcelLabelParser)->parse($this->createWorkbook([
+            ['Code Article'],
+            [' 6roulement-086&a001 '],
+            ['001ab-09'],
+        ]));
+
+        $this->assertSame('6ROULEMENT-086&A001', $labels[0]->qrPayload());
+        $this->assertSame('6ROULEMENT-086', $labels[0]->codeArticle);
+        $this->assertSame('A001', $labels[0]->emplacement);
+        $this->assertSame('001AB-09', $labels[1]->qrPayload());
+        $this->assertNull($labels[1]->emplacement);
+    }
+
+    public function test_malformed_qr_payload_identifies_the_excel_row(): void
+    {
+        $this->expectException(ExcelLabelParseException::class);
+        $this->expectExceptionMessage('ligne Excel 2');
+        $this->expectExceptionMessage('payload invalide');
+
+        (new ExcelLabelParser)->parse($this->createWorkbook([
+            ['Code Article'],
+            ['CODE&A001&OTHER'],
+        ]));
+    }
+
     public function test_duplicate_excel_rows_remain_duplicates(): void
     {
         $labels = (new ExcelLabelParser)->parse($this->createWorkbook([
@@ -142,10 +169,11 @@ final class ExcelLabelParserTest extends TestCase
         ], array_map(fn ($label) => $label->code, $labels));
     }
 
-    public function test_requires_at_least_one_non_empty_code(): void
+    public function test_blank_code_in_a_non_empty_row_is_rejected(): void
     {
         $this->expectException(ExcelLabelParseException::class);
-        $this->expectExceptionMessage('aucune valeur non vide');
+        $this->expectExceptionMessage('ligne Excel 2');
+        $this->expectExceptionMessage('payload invalide');
 
         (new ExcelLabelParser)->parse($this->createWorkbook([
             ['Code Article', 'Designation'],
