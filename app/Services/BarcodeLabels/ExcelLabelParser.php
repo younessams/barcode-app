@@ -11,6 +11,8 @@ final class ExcelLabelParser
 {
     public const DEFAULT_COLUMN_NAME = 'Code Article';
 
+    private const EMPLACEMENT_COLUMN_ALIASES = ['emplacement', 'emp'];
+
     /**
      * @return list<BarcodeLabel>
      */
@@ -44,6 +46,7 @@ final class ExcelLabelParser
             }
 
             $codeColumn = $this->detectCodeColumn($headers, $columnName);
+            $emplacementColumn = $this->detectEmplacementColumn($headers);
             $labels = [];
 
             for ($row = 2; $row <= $highestRow; $row++) {
@@ -52,9 +55,13 @@ final class ExcelLabelParser
                 }
 
                 try {
-                    $payload = ArticleQrPayload::parse(
-                        $this->cellString($sheet->getCell([$codeColumn, $row]))
-                    );
+                    $codeArticle = $this->cellString($sheet->getCell([$codeColumn, $row]));
+                    $payload = $emplacementColumn === null
+                        ? ArticleQrPayload::parse($codeArticle)
+                        : ArticleQrPayload::fromParts(
+                            $codeArticle,
+                            $this->cellString($sheet->getCell([$emplacementColumn, $row])),
+                        );
                 } catch (ArticleQrPayloadParseException $exception) {
                     throw new ExcelLabelParseException(
                         'La ligne Excel '.$row.' contient un payload invalide : '
@@ -128,6 +135,29 @@ final class ExcelLabelParser
         }
 
         return $columns[0];
+    }
+
+    /**
+     * @param  array<int, string>  $headers
+     */
+    private function detectEmplacementColumn(array $headers): ?int
+    {
+        $columns = array_values(array_keys(array_filter(
+            $headers,
+            fn (string $header): bool => in_array(
+                self::normalizeHeader($header),
+                self::EMPLACEMENT_COLUMN_ALIASES,
+                true,
+            ),
+        )));
+
+        if (count($columns) > 1) {
+            throw new ExcelLabelParseException(
+                'Plusieurs colonnes d emplacement ont ete detectees. Conservez une seule colonne Emplacement ou Emp.'
+            );
+        }
+
+        return $columns[0] ?? null;
     }
 
     /**

@@ -5,6 +5,7 @@ namespace Tests\Unit;
 use App\Services\BarcodeLabels\A4LabelPresetCatalog;
 use App\Services\BarcodeLabels\QrCodeLayout;
 use App\Services\BarcodeLabels\QrCodeLayoutException;
+use TCPDF;
 use Tests\TestCase;
 
 final class QrCodeLayoutTest extends TestCase
@@ -142,5 +143,111 @@ final class QrCodeLayoutTest extends TestCase
                 $qr['yMm'] + $qr['totalSizeMm'] + $qr['textGapMm'] + $qr['textHeightMm'],
             );
         }
+    }
+
+    public function test_52x297_qr_layout_is_horizontal_and_fits_all_40_slots(): void
+    {
+        $layout = (new A4LabelPresetCatalog)->layout('52_5x29_7');
+        $calculator = new QrCodeLayout;
+        $pdf = new TCPDF('P', 'mm', [210, 297], true, 'UTF-8', false);
+        $guides = $layout['guides'];
+        $payload = 'CODE-ARTICLE-000123&A001';
+
+        $origins = [];
+
+        foreach ($layout['elements'] as $slotIndex => $element) {
+            $qr = $calculator->calculate($payload, $layout, $slotIndex, true);
+            $labelLeft = $guides['marginLeftMm'] + ($slotIndex % $guides['columns']) * ($guides['labelWidthMm'] + $guides['gapXMm']);
+            $labelTop = $guides['marginTopMm'] + intdiv($slotIndex, $guides['columns']) * ($guides['labelHeightMm'] + $guides['gapYMm']);
+            $labelRight = $labelLeft + $guides['labelWidthMm'];
+            $labelBottom = $labelTop + $guides['labelHeightMm'];
+            $emplacementBox = $calculator->emplacementBox($pdf, 'A001', $qr);
+            $origins[] = $qr['slotOriginXMm'].','.$qr['slotOriginYMm'];
+
+            $this->assertTrue($qr['horizontal']);
+            $this->assertEqualsWithDelta($labelLeft, $qr['slotOriginXMm'], 0.001);
+            $this->assertEqualsWithDelta($labelTop, $qr['slotOriginYMm'], 0.001);
+            $this->assertGreaterThanOrEqual($labelLeft + 2.0, $qr['xMm']);
+            $this->assertLessThanOrEqual($labelRight - 2.0, $qr['xMm'] + $qr['totalSizeMm']);
+            $this->assertGreaterThanOrEqual($labelTop + 2.0, $qr['yMm']);
+            $this->assertLessThanOrEqual($labelBottom - 2.0, $qr['yMm'] + $qr['totalSizeMm']);
+            $this->assertGreaterThanOrEqual($labelLeft + 2.0, $qr['textXMm']);
+            $this->assertLessThanOrEqual($labelRight - 2.0, $qr['textXMm'] + $qr['textWidthMm']);
+            $this->assertGreaterThanOrEqual($labelTop + 2.0, $qr['textYMm']);
+            $this->assertLessThanOrEqual($labelBottom - 2.0, $qr['textYMm'] + $qr['textHeightMm']);
+            $this->assertGreaterThanOrEqual($labelLeft + 2.0, $emplacementBox['xMm']);
+            $this->assertLessThanOrEqual($labelRight - 2.0, $emplacementBox['xMm'] + $emplacementBox['widthMm']);
+            $this->assertGreaterThanOrEqual($labelTop + 2.0, $emplacementBox['yMm']);
+            $this->assertLessThanOrEqual($labelBottom - 2.0, $emplacementBox['yMm'] + $emplacementBox['heightMm']);
+            $this->assertGreaterThanOrEqual(QrCodeLayout::MIN_MODULE_MM, $qr['moduleMm']);
+            $this->assertGreaterThanOrEqual(QrCodeLayout::RECOMMENDED_MODULE_MM, $qr['moduleMm']);
+        }
+
+        $this->assertCount(40, array_unique($origins));
+        $this->assertSame([0.0, 0.0], $this->slotOrigin($calculator, $layout, 0));
+        $this->assertSame([52.5, 0.0], $this->slotOrigin($calculator, $layout, 1));
+        $this->assertSame([157.5, 0.0], $this->slotOrigin($calculator, $layout, 3));
+        $this->assertSame([0.0, 29.7], $this->slotOrigin($calculator, $layout, 4));
+        $this->assertSame([157.5, 267.3], $this->slotOrigin($calculator, $layout, 39));
+    }
+
+    public function test_52x297_qr_layout_keeps_code_payload_and_emplacement_optional(): void
+    {
+        $layout = (new A4LabelPresetCatalog)->layout('52_5x29_7');
+        $calculator = new QrCodeLayout;
+        $withEmplacement = $calculator->calculate('CODE-ARTICLE-000123&A001', $layout, 0, true);
+        $withoutEmplacement = $calculator->calculate('CODE-ARTICLE-000123', $layout, 0, false);
+
+        $this->assertSame(25, $withEmplacement['matrixModules']);
+        $this->assertSame($withEmplacement['matrixModules'] + 8, $withEmplacement['totalModules']);
+        $this->assertTrue($withEmplacement['emplacementBox']);
+        $this->assertFalse($withoutEmplacement['emplacementBox']);
+        $this->assertNull($withoutEmplacement['emplacementTextFontPt']);
+    }
+
+    public function test_52x297_emplacement_box_is_content_sized_centered_and_safe(): void
+    {
+        $layout = (new A4LabelPresetCatalog)->layout('52_5x29_7');
+        $calculator = new QrCodeLayout;
+        $pdf = new TCPDF('P', 'mm', [210, 297], true, 'UTF-8', false);
+        $widths = [];
+
+        foreach (['A1', 'A001', 'B021', 'LONG-LOCATION-01'] as $emplacement) {
+            $qr = $calculator->calculate('6SHN1276879736898&'.$emplacement, $layout, 0, true);
+            $box = $calculator->emplacementBox($pdf, $emplacement, $qr);
+            $pdf->SetFont('helvetica', 'B', $box['fontPt']);
+            $expectedWidth = min(
+                $qr['textWidthMm'],
+                $pdf->GetStringWidth($box['text']) + (2 * QrCodeLayout::HORIZONTAL_EMP_PADDING_X_MM),
+            );
+
+            $this->assertSame('Emp: '.$emplacement, $box['text']);
+            $this->assertEqualsWithDelta($expectedWidth, $box['widthMm'], 0.001);
+            $this->assertEqualsWithDelta(
+                $qr['textXMm'] + (($qr['textWidthMm'] - $box['widthMm']) / 2),
+                $box['xMm'],
+                0.001,
+            );
+            $this->assertEqualsWithDelta(
+                $qr['textYMm'] + $qr['codeTextHeightMm'] + QrCodeLayout::HORIZONTAL_EMP_VERTICAL_GAP_MM,
+                $box['yMm'],
+                0.001,
+            );
+            $this->assertGreaterThanOrEqual(2.0, $box['xMm']);
+            $this->assertLessThanOrEqual(50.5, $box['xMm'] + $box['widthMm']);
+            $this->assertLessThanOrEqual(27.7, $box['yMm'] + $box['heightMm']);
+            $widths[$emplacement] = $box['widthMm'];
+        }
+
+        $this->assertLessThan($widths['A001'], $widths['A1']);
+        $this->assertLessThan($widths['LONG-LOCATION-01'], $widths['B021']);
+    }
+
+    /** @return array{float, float} */
+    private function slotOrigin(QrCodeLayout $calculator, array $layout, int $slotIndex): array
+    {
+        $qr = $calculator->calculate('6SHN1276879736898&A001', $layout, $slotIndex, true);
+
+        return [$qr['slotOriginXMm'], $qr['slotOriginYMm']];
     }
 }

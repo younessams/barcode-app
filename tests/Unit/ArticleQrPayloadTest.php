@@ -36,6 +36,44 @@ final class ArticleQrPayloadTest extends TestCase
         $this->assertSame('A001', $payload->emplacement);
     }
 
+    public function test_separate_parts_are_normalized_and_build_one_canonical_payload(): void
+    {
+        $payload = ArticleQrPayload::fromParts(' 001ab-09 ', ' a001 ');
+
+        $this->assertSame('001AB-09&A001', $payload->payload);
+        $this->assertSame('001AB-09', $payload->codeArticle);
+        $this->assertSame('A001', $payload->emplacement);
+    }
+
+    public function test_blank_separate_emplacement_produces_no_trailing_separator(): void
+    {
+        $payload = ArticleQrPayload::fromParts('VIS-125', '   ');
+
+        $this->assertSame('VIS-125', $payload->payload);
+        $this->assertNull($payload->emplacement);
+    }
+
+    #[DataProvider('invalidSeparateParts')]
+    public function test_reserved_separator_is_rejected_inside_separate_parts(
+        string $codeArticle,
+        ?string $emplacement,
+        string $expectedMessage,
+    ): void {
+        $this->expectException(ArticleQrPayloadParseException::class);
+        $this->expectExceptionMessage($expectedMessage);
+
+        ArticleQrPayload::fromParts($codeArticle, $emplacement);
+    }
+
+    /** @return array<string, array{string, ?string, string}> */
+    public static function invalidSeparateParts(): array
+    {
+        return [
+            'separator in article code' => ['CODE&A001', 'A001', 'Code Article contient le separateur reserve'],
+            'separator in emplacement' => ['CODE', 'A&001', 'emplacement contient le separateur reserve'],
+        ];
+    }
+
     #[DataProvider('malformedPayloads')]
     public function test_malformed_payloads_are_rejected(string $value): void
     {

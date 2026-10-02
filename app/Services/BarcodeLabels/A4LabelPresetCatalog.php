@@ -8,7 +8,7 @@ final class A4LabelPresetCatalog
 
     public const PAGE_HEIGHT_MM = 297.0;
 
-    public const DEFAULT_ID = '70x37';
+    public const DEFAULT_ID = '52_5x29_7';
 
     /** @var array<string, array<string, mixed>> */
     private const PRESETS = [
@@ -24,14 +24,14 @@ final class A4LabelPresetCatalog
             'labelWidthMm' => 52.5, 'labelHeightMm' => 29.7, 'columns' => 4, 'rows' => 10, 'labelsPerSheet' => 40,
             'marginLeftMm' => 0.0, 'marginTopMm' => 0.0, 'marginRightMm' => 0.0, 'marginBottomMm' => 0.0, 'gapXMm' => 0.0, 'gapYMm' => 0.0,
             'barcode' => ['xMm' => 4.5, 'yMm' => 1.0, 'widthMm' => 43.5, 'heightMm' => 20.0, 'textFontPt' => 6.5, 'textGapMm' => 0.25, 'textHeightMm' => 4.0],
-            'default' => false, 'recommended' => false,
+            'default' => true, 'recommended' => true,
         ],
         '70x37' => [
             'id' => '70x37', 'displayWidthMm' => 70.0, 'displayHeightMm' => 37.0,
             'labelWidthMm' => 70.0, 'labelHeightMm' => 37.125, 'columns' => 3, 'rows' => 8, 'labelsPerSheet' => 24,
             'marginLeftMm' => 0.0, 'marginTopMm' => 0.0, 'marginRightMm' => 0.0, 'marginBottomMm' => 0.0, 'gapXMm' => 0.0, 'gapYMm' => 0.0,
             'barcode' => ['xMm' => 6.75, 'yMm' => 1.0, 'widthMm' => 56.5, 'heightMm' => 27.2, 'textFontPt' => 7.8, 'textGapMm' => 0.25, 'textHeightMm' => 4.6],
-            'default' => true, 'recommended' => true,
+            'default' => false, 'recommended' => false,
         ],
         '70x42_3' => [
             'id' => '70x42_3', 'displayWidthMm' => 70.0, 'displayHeightMm' => 42.3,

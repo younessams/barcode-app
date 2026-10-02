@@ -22,7 +22,7 @@ final class BarcodeLabelPdf
         $pdf->SetAutoPageBreak(false, 0);
         $pdf->SetCreator('Laravel Barcode Labels');
         $pdf->SetAuthor('Internal');
-        $pdf->SetTitle('Code 128 Labels');
+        $pdf->SetTitle('Barcode Labels');
         $pdf->setCellPaddings(0, 0, 0, 0);
         $style = ['position' => '', 'align' => 'C', 'stretch' => false, 'fitwidth' => true, 'cellfitalign' => 'C', 'border' => false, 'hpadding' => 0, 'vpadding' => 0, 'fgcolor' => [0, 0, 0], 'bgcolor' => false, 'text' => false];
 
@@ -57,8 +57,8 @@ final class BarcodeLabelPdf
             $qrStyle = array_merge($style, ['hpadding' => QrCodeLayout::QUIET_ZONE_MODULES, 'vpadding' => QrCodeLayout::QUIET_ZONE_MODULES, 'module_width' => 1, 'module_height' => 1]);
             $pdf->write2DBarcode($label->qrPayload(), QrCodeLayout::ERROR_CORRECTION, $qr['xMm'], $qr['yMm'], $qr['totalSizeMm'], $qr['totalSizeMm'], $qrStyle, 'N', false);
             $textX = $qr['textXMm'];
-            $textY = $qr['yMm'] + $qr['totalSizeMm'] + $qr['textGapMm'];
-            $textWidth = $layout['guides']['labelWidthMm'];
+            $textY = ($qr['horizontal'] ?? false) ? $qr['textYMm'] : $qr['yMm'] + $qr['totalSizeMm'] + $qr['textGapMm'];
+            $textWidth = ($qr['horizontal'] ?? false) ? $qr['textWidthMm'] : $layout['guides']['labelWidthMm'];
 
             $this->drawQrText(
                 $pdf,
@@ -123,13 +123,45 @@ final class BarcodeLabelPdf
             return;
         }
 
+        if (($qr['horizontal'] ?? false) === true) {
+            $emplacementBox = (new QrCodeLayout)->emplacementBox($pdf, $label->emplacement, $qr);
+            $pdf->SetFont('helvetica', 'B', $emplacementBox['fontPt']);
+            $pdf->SetLineStyle(['width' => 0.16, 'cap' => 'butt', 'join' => 'round', 'dash' => '1,1', 'color' => [56, 56, 56]]);
+            $pdf->RoundedRect(
+                $emplacementBox['xMm'],
+                $emplacementBox['yMm'],
+                $emplacementBox['widthMm'],
+                $emplacementBox['heightMm'],
+                $qr['emplacementBoxRadiusMm'],
+                '1111',
+                'D',
+            );
+            $pdf->SetLineStyle(['width' => 0.2, 'cap' => 'butt', 'join' => 'miter', 'dash' => 0, 'color' => [0, 0, 0]]);
+            $pdf->SetXY($emplacementBox['xMm'], $emplacementBox['yMm']);
+            $pdf->Cell(
+                $emplacementBox['widthMm'],
+                $emplacementBox['heightMm'],
+                $emplacementBox['text'],
+                0,
+                0,
+                'C',
+                false,
+                '',
+                1,
+                false,
+                'T',
+                'M',
+            );
+
+            return;
+        }
+
         $emplacementFont = $this->fitTextFont(
             $pdf,
             $label->emplacement,
             $textWidth,
             (float) $qr['emplacementTextFontPt'],
         );
-
         $pdf->SetFont('helvetica', 'B', $emplacementFont);
         $pdf->SetXY(
             $textX,

@@ -72,7 +72,7 @@ final class BarcodeLabelController extends Controller
         }
 
         try {
-            $content = $pdf->render($labels, $layout, $validated['code_type'] ?? CodeType::CODE128);
+            $content = $pdf->render($labels, $layout, $validated['code_type'] ?? CodeType::QR);
         } catch (QrCodeLayoutException $exception) {
             return back()->withErrors(['excel_file' => $exception->getMessage()])->withInput();
         }

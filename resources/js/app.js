@@ -62,7 +62,7 @@ function findDefaultHeader(headers) {
 }
 
 function renderPreview() {
-    const preset = presets[presetSelect.value] || presets['70x37'];
+    const preset = presets[presetSelect.value] || presets['52_5x29_7'];
     if (!preset || !preview) return;
     const width = preview.clientWidth;
     if (!width) return requestAnimationFrame(renderPreview);
@@ -104,10 +104,15 @@ function createQrPreview(left, top, preset, scale) {
         sizeMm = Math.min(sizeMm, 24);
     }
 
+    const horizontal = preset.id === '52_5x29_7';
+    if (horizontal) sizeMm = Math.min(preset.labelHeightMm - 4, preset.labelWidthMm - 4);
+
     const sizePx = sizeMm * scale;
     const qr = document.createElement('div');
     qr.className = 'qr-preview';
-    qr.style.cssText = `left:${(left + ((preset.labelWidthMm - sizeMm) / 2)) * scale}px;top:${(top + 0.5) * scale}px;width:${sizePx}px;height:${sizePx}px;position:absolute`;
+    const qrLeft = horizontal ? left + 2 : left + ((preset.labelWidthMm - sizeMm) / 2);
+    const qrTop = horizontal ? top + ((preset.labelHeightMm - sizeMm) / 2) : top + 0.5;
+    qr.style.cssText = `left:${qrLeft * scale}px;top:${qrTop * scale}px;width:${sizePx}px;height:${sizePx}px;position:absolute`;
     for (let row = 0; row < 29; row += 1) {
         for (let column = 0; column < 29; column += 1) {
             const module = document.createElement('span');
@@ -116,9 +121,21 @@ function createQrPreview(left, top, preset, scale) {
             qr.append(module);
         }
     }
-    qr.dataset.textTop = `${(top + 0.5 + sizeMm + preset.barcode.textGapMm) * scale}`;
-    qr.dataset.textLeft = `${left * scale}`;
-    qr.dataset.textWidth = `${preset.labelWidthMm * scale}`;
+    if (horizontal) {
+        const textLeft = qrLeft + sizeMm + 2;
+        const textTop = top + ((preset.labelHeightMm - 10) / 2);
+        qr.dataset.textTop = `${textTop * scale}`;
+        qr.dataset.textLeft = `${textLeft * scale}`;
+        qr.dataset.textWidth = `${(preset.labelWidthMm - textLeft + left - 2) * scale}`;
+        const emplacement = document.createElement('span');
+        emplacement.className = 'qr-emplacement-preview';
+        emplacement.style.cssText = `left:${(textLeft - qrLeft) * scale}px;top:${(textTop - qrTop + 5) * scale}px;width:${(preset.labelWidthMm - textLeft + left - 2) * scale}px`;
+        qr.append(emplacement);
+    } else {
+        qr.dataset.textTop = `${(top + 0.5 + sizeMm + preset.barcode.textGapMm) * scale}`;
+        qr.dataset.textLeft = `${left * scale}`;
+        qr.dataset.textWidth = `${preset.labelWidthMm * scale}`;
+    }
     return qr;
 }
 
@@ -146,4 +163,5 @@ codeTypeInputs.forEach((input) => input.addEventListener('change', renderPreview
 new ResizeObserver(renderPreview).observe(preview);
 window.addEventListener('resize', renderPreview);
 form.addEventListener('submit', (event) => { if (columnSelect.disabled || !columnSelect.value) { event.preventDefault(); columnSelect.focus(); } });
+document.querySelector('#code-type-qr').checked = true;
 renderPreview();

@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Services\BarcodeLabels\ExcelLabelParseException;
 use App\Services\BarcodeLabels\ExcelLabelParser;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Fixtures\CreatesExcelFixtures;
 use Tests\TestCase;
 
@@ -119,6 +120,114 @@ final class ExcelLabelParserTest extends TestCase
         $this->assertSame('A001', $labels[0]->emplacement);
         $this->assertSame('001AB-09', $labels[1]->qrPayload());
         $this->assertNull($labels[1]->emplacement);
+    }
+
+    #[DataProvider('emplacementHeaderAliases')]
+    public function test_optional_emplacement_column_is_detected_by_exact_normalized_alias(string $header): void
+    {
+        $labels = (new ExcelLabelParser)->parse($this->createWorkbook([
+            ['Code Article', $header],
+            [' 6visth-649 ', ' a0011 '],
+        ]));
+
+        $this->assertSame('6VISTH-649&A0011', $labels[0]->qrPayload());
+        $this->assertSame('6VISTH-649', $labels[0]->codeArticle);
+        $this->assertSame('A0011', $labels[0]->emplacement);
+    }
+
+    /** @return array<string, array{string}> */
+    public static function emplacementHeaderAliases(): array
+    {
+        return [
+            'canonical' => ['Emplacement'],
+            'uppercase canonical' => ['EMPLACEMENT'],
+            'lowercase canonical' => ['emplacement'],
+            'short with whitespace' => [' Emp '],
+            'uppercase short' => ['EMP'],
+            'lowercase short' => ['emp'],
+        ];
+    }
+
+    public function test_unrelated_columns_are_ignored_in_separate_column_mode(): void
+    {
+        $labels = (new ExcelLabelParser)->parse($this->createWorkbook([
+            ['Designation', 'Code Article', 'Stock', 'Emplacement', 'Fournisseur'],
+            ['Vis acier', '6VISTH-649', '18', 'A0011', 'Supplier'],
+        ]));
+
+        $this->assertSame('6VISTH-649&A0011', $labels[0]->qrPayload());
+    }
+
+    public function test_blank_separate_emplacement_keeps_code_only_payload(): void
+    {
+        $labels = (new ExcelLabelParser)->parse($this->createWorkbook([
+            ['Code Article', 'Emp'],
+            ['VIS-125', ''],
+        ]));
+
+        $this->assertSame('VIS-125', $labels[0]->qrPayload());
+        $this->assertNull($labels[0]->emplacement);
+    }
+
+    public function test_similar_header_is_not_fuzzily_matched_as_emplacement(): void
+    {
+        $labels = (new ExcelLabelParser)->parse($this->createWorkbook([
+            ['Code Article', 'employee'],
+            ['6VISTH-649&A0011', 'A0011'],
+        ]));
+
+        $this->assertSame('6VISTH-649&A0011', $labels[0]->qrPayload());
+    }
+
+    #[DataProvider('invalidSeparateColumnValues')]
+    public function test_reserved_separator_in_separate_columns_reports_excel_row(
+        string $codeArticle,
+        string $emplacement,
+        string $expectedMessage,
+    ): void {
+        try {
+            (new ExcelLabelParser)->parse($this->createWorkbook([
+                ['Code Article', 'Emplacement'],
+                ['VALID-1', 'A001'],
+                [$codeArticle, $emplacement],
+            ]));
+            $this->fail('Expected the separate-column row to be rejected.');
+        } catch (ExcelLabelParseException $exception) {
+            $this->assertStringContainsString('ligne Excel 3', $exception->getMessage());
+            $this->assertStringContainsString($expectedMessage, $exception->getMessage());
+        }
+    }
+
+    /** @return array<string, array{string, string, string}> */
+    public static function invalidSeparateColumnValues(): array
+    {
+        return [
+            'matching composite code and emplacement' => ['6VISTH-649&A0011', 'A0011', 'Code Article contient le separateur reserve'],
+            'conflicting composite code and emplacement' => ['6VISTH-649&A0011', 'B002', 'Code Article contient le separateur reserve'],
+            'separator inside code' => ['6VISTH&649', 'A0011', 'Code Article contient le separateur reserve'],
+            'separator inside emplacement' => ['6VISTH-649', 'A&0011', 'emplacement contient le separateur reserve'],
+        ];
+    }
+
+    #[DataProvider('duplicateEmplacementHeaders')]
+    public function test_duplicate_emplacement_columns_are_rejected(array $headers): void
+    {
+        $this->expectException(ExcelLabelParseException::class);
+        $this->expectExceptionMessage('Plusieurs colonnes d emplacement ont ete detectees');
+
+        (new ExcelLabelParser)->parse($this->createWorkbook([
+            $headers,
+            ['CODE-1', 'A001', 'A002'],
+        ]));
+    }
+
+    /** @return array<string, array{array<int, string>}> */
+    public static function duplicateEmplacementHeaders(): array
+    {
+        return [
+            'two aliases' => [['Code Article', 'Emp', 'Emplacement']],
+            'normalized duplicate alias' => [['Code Article', ' EMP ', ' emp ']],
+        ];
     }
 
     public function test_malformed_qr_payload_identifies_the_excel_row(): void

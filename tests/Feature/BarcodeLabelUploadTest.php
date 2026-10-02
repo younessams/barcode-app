@@ -65,6 +65,45 @@ final class BarcodeLabelUploadTest extends TestCase
         $this->assertStringNotContainsString('/Subtype /Image', $pdf->getContent());
     }
 
+    public function test_upload_auto_detects_separate_emplacement_column(): void
+    {
+        $path = $this->createWorkbook([
+            ['Code Article', 'Designation', 'Emplacement'],
+            ['6VISTH-649', 'Vis acier', 'A0011'],
+        ]);
+
+        $response = $this->post(route('labels.generate'), [
+            'excel_file' => new UploadedFile($path, 'labels.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true),
+            'excel_column' => 'Code Article',
+            'preset_id' => '52_5x29_7',
+            'code_type' => 'qr',
+        ]);
+
+        $response->assertRedirect(route('labels.index'))
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('result.labels', 1);
+    }
+
+    public function test_omitted_code_type_defaults_to_qr(): void
+    {
+        $path = $this->createWorkbook([['Code Article'], ['CODE-0001']]);
+        $response = $this->post(route('labels.generate'), ['excel_file' => new UploadedFile($path, 'labels.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true), 'excel_column' => 'Code Article', 'preset_id' => '52_5x29_7']);
+        $response->assertRedirect(route('labels.index'))->assertSessionHas('result.labels', 1);
+        $pdf = $this->get(route('labels.pdf', ['token' => session('result.token')]));
+        $pdf->assertOk();
+        $this->assertStringNotContainsString('/Subtype /Image', $pdf->getContent());
+    }
+
+    public function test_explicit_code128_code_type_remains_available(): void
+    {
+        $path = $this->createWorkbook([['Code Article'], ['CODE-0001']]);
+        $response = $this->post(route('labels.generate'), ['excel_file' => new UploadedFile($path, 'labels.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true), 'excel_column' => 'Code Article', 'preset_id' => '52_5x29_7', 'code_type' => 'code128']);
+        $response->assertRedirect(route('labels.index'))->assertSessionHas('result.labels', 1);
+        $pdf = $this->get(route('labels.pdf', ['token' => session('result.token')]));
+        $pdf->assertOk();
+        $this->assertStringNotContainsString('/Subtype /Image', $pdf->getContent());
+    }
+
     public function test_invalid_code_type_is_rejected(): void
     {
         $path = $this->createWorkbook([['SKU'], ['CODE-1']]);

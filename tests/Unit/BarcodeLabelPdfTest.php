@@ -93,4 +93,28 @@ final class BarcodeLabelPdfTest extends TestCase
         $this->assertNull($qr['emplacementTextFontPt']);
         $this->assertSame(0.0, $qr['emplacementTextHeightMm']);
     }
+
+    public function test_default_qr_preset_has_40_slots_and_two_pages_for_41_labels(): void
+    {
+        $layout = (new A4LabelPresetCatalog)->layout('52_5x29_7');
+        $renderer = new BarcodeLabelPdf;
+        $labels = array_map(function (int $offset): BarcodeLabel {
+            $codeArticle = '6SHN'.(1276879736898 + $offset);
+
+            return new BarcodeLabel($codeArticle.'&A001', $codeArticle, 'A001');
+        }, range(0, 40));
+
+        $this->assertCount(40, $layout['elements']);
+        $this->assertSame(1, $renderer->pageCount(40, $layout));
+        $this->assertSame(2, $renderer->pageCount(41, $layout));
+        $fortyLabelPdf = $renderer->render(array_slice($labels, 0, 40), $layout, 'qr');
+        $fortyOneLabelPdf = $renderer->render($labels, $layout, 'qr');
+
+        $this->assertStringStartsWith('%PDF', $fortyLabelPdf);
+        $this->assertStringStartsWith('%PDF', $fortyOneLabelPdf);
+        $this->assertSame(1, preg_match_all('/\/Type\s*\/Page\b/', $fortyLabelPdf));
+        $this->assertSame(2, preg_match_all('/\/Type\s*\/Page\b/', $fortyOneLabelPdf));
+        $this->assertStringNotContainsString('/Subtype /Image', $fortyLabelPdf);
+        $this->assertStringNotContainsString('/Subtype /Image', $fortyOneLabelPdf);
+    }
 }

@@ -2,6 +2,8 @@
 
 namespace App\Services\BarcodeLabels;
 
+use TCPDF;
+
 final class QrCodeLayout
 {
     public const ERROR_CORRECTION = 'QRCODE,M';
@@ -11,6 +13,16 @@ final class QrCodeLayout
     public const MIN_MODULE_MM = 0.40;
 
     public const RECOMMENDED_MODULE_MM = 0.50;
+
+    public const HORIZONTAL_QR_TARGET_MM = 21.8;
+
+    public const HORIZONTAL_EMP_PADDING_X_MM = 2.0;
+
+    public const HORIZONTAL_EMP_BOX_HEIGHT_MM = 5.5;
+
+    public const HORIZONTAL_EMP_BOX_RADIUS_MM = 1.2;
+
+    public const HORIZONTAL_EMP_VERTICAL_GAP_MM = 4.0;
 
     private const PRESET_70X37_TARGET_QR_MM = 24.0;
 
@@ -37,6 +49,11 @@ final class QrCodeLayout
         $guides = $layout['guides'];
         $preset = $this->presetForSlot($guides, $slotIndex);
         $text = $this->textProfile($preset['labelHeightMm'], $hasEmplacement);
+        if (($layout['presetId'] ?? null) === '52_5x29_7') {
+            $totalModules = $matrix['modules'] + (2 * self::QUIET_ZONE_MODULES);
+
+            return $this->calculateHorizontal52x297($matrix['modules'], $totalModules, $preset, $text, $hasEmplacement);
+        }
         $safeHorizontalMm = 1.0;
         $safeTopMm = 0.5;
         $safeBottomMm = 0.5;
@@ -97,6 +114,64 @@ final class QrCodeLayout
         ];
     }
 
+    /** @return array<string, mixed> */
+    private function calculateHorizontal52x297(
+        int $matrixModules,
+        int $totalModules,
+        array $preset,
+        array $text,
+        bool $hasEmplacement,
+    ): array {
+        $safeMm = 2.0;
+        $qrLeftMm = 2.8;
+        $qrToTextGapMm = 2.4;
+        $availableSizeMm = min($preset['labelWidthMm'] - (2 * $safeMm), $preset['labelHeightMm'] - (2 * $safeMm));
+        $recommendedSizeMm = $totalModules * self::RECOMMENDED_MODULE_MM;
+        $totalSizeMm = min($availableSizeMm, max(self::HORIZONTAL_QR_TARGET_MM, $recommendedSizeMm));
+        $moduleMm = floor(($totalSizeMm / $totalModules) * 1000) / 1000;
+
+        if ($moduleMm < self::MIN_MODULE_MM) {
+            throw new QrCodeLayoutException('Ce QR Code est trop dense pour le format '.$preset['labelWidthMm'].' x '.$preset['labelHeightMm'].' mm. Choisissez un format plus grand ou utilisez Code 128.');
+        }
+
+        $totalSizeMm = round($moduleMm * $totalModules, 3);
+        $codeTextHeightMm = 3.2;
+        $textHeightMm = $hasEmplacement
+            ? $codeTextHeightMm + self::HORIZONTAL_EMP_VERTICAL_GAP_MM + self::HORIZONTAL_EMP_BOX_HEIGHT_MM
+            : $codeTextHeightMm;
+        $localTextYMm = $hasEmplacement
+            ? 9.0
+            : ($preset['labelHeightMm'] - $codeTextHeightMm) / 2;
+        $localTextXMm = $qrLeftMm + $totalSizeMm + $qrToTextGapMm;
+        $textWidthMm = $preset['labelWidthMm'] - $localTextXMm - $safeMm;
+
+        return [
+            'matrixModules' => $matrixModules,
+            'totalModules' => $totalModules,
+            'moduleMm' => $moduleMm,
+            'totalSizeMm' => $totalSizeMm,
+            'slotOriginXMm' => round($preset['xMm'], 3),
+            'slotOriginYMm' => round($preset['yMm'], 3),
+            'xMm' => round($preset['xMm'] + $qrLeftMm, 3),
+            'yMm' => round($preset['yMm'] + (($preset['labelHeightMm'] - $totalSizeMm) / 2), 3),
+            'textXMm' => round($preset['xMm'] + $localTextXMm, 3),
+            'textYMm' => round($preset['yMm'] + $localTextYMm, 3),
+            'textWidthMm' => round($textWidthMm, 3),
+            'textFontPt' => 6.4,
+            'textGapMm' => $text['gapMm'],
+            'textHeightMm' => $textHeightMm,
+            'codeTextHeightMm' => $codeTextHeightMm,
+            'emplacementTextFontPt' => $hasEmplacement ? 6.35 : null,
+            'emplacementTextGapMm' => $hasEmplacement ? self::HORIZONTAL_EMP_VERTICAL_GAP_MM : 0.0,
+            'emplacementTextHeightMm' => $hasEmplacement ? self::HORIZONTAL_EMP_BOX_HEIGHT_MM : 0.0,
+            'emplacementBoxPaddingXMm' => self::HORIZONTAL_EMP_PADDING_X_MM,
+            'emplacementBoxRadiusMm' => self::HORIZONTAL_EMP_BOX_RADIUS_MM,
+            'emplacementBox' => $hasEmplacement,
+            'horizontal' => true,
+            'compact' => $moduleMm < self::RECOMMENDED_MODULE_MM,
+        ];
+    }
+
     /** @return array{modules:int} */
     public function matrix(string $value): array
     {
@@ -111,6 +186,42 @@ final class QrCodeLayout
         }
 
         return ['modules' => $rows];
+    }
+
+    /** @return array{text:string,fontPt:float,xMm:float,yMm:float,widthMm:float,heightMm:float} */
+    public function emplacementBox(TCPDF $pdf, string $emplacement, array $qr): array
+    {
+        $text = 'Emp: '.$emplacement;
+        $paddingX = (float) $qr['emplacementBoxPaddingXMm'];
+        $availableTextWidth = (float) $qr['textWidthMm'] - (2 * $paddingX);
+        $fontPt = (float) $qr['emplacementTextFontPt'];
+        $minimumFontPt = min($fontPt, 4.0);
+
+        while ($fontPt > $minimumFontPt) {
+            $pdf->SetFont('helvetica', 'B', $fontPt);
+
+            if ($pdf->GetStringWidth($text) <= $availableTextWidth) {
+                break;
+            }
+
+            $fontPt = round($fontPt - 0.2, 2);
+        }
+
+        $fontPt = max($minimumFontPt, $fontPt);
+        $pdf->SetFont('helvetica', 'B', $fontPt);
+        $widthMm = min(
+            (float) $qr['textWidthMm'],
+            $pdf->GetStringWidth($text) + (2 * $paddingX),
+        );
+
+        return [
+            'text' => $text,
+            'fontPt' => $fontPt,
+            'xMm' => round((float) $qr['textXMm'] + (((float) $qr['textWidthMm'] - $widthMm) / 2), 3),
+            'yMm' => round((float) $qr['textYMm'] + (float) $qr['codeTextHeightMm'] + (float) $qr['emplacementTextGapMm'], 3),
+            'widthMm' => round($widthMm, 3),
+            'heightMm' => (float) $qr['emplacementTextHeightMm'],
+        ];
     }
 
     /** @return array{xMm:float,yMm:float,labelWidthMm:float,labelHeightMm:float} */

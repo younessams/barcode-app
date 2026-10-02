@@ -31,29 +31,55 @@ final readonly class ArticleQrPayload
         }
 
         if ($separatorCount === 0) {
-            $codeArticle = CodeArticleNormalizer::normalize($value);
-
-            return new self($codeArticle, $codeArticle, null);
+            return self::fromParts($value, null);
         }
 
         [$codeArticle, $emplacement] = explode('&', $value, 2);
-        $codeArticle = CodeArticleNormalizer::normalize($codeArticle);
-        $emplacement = CodeArticleNormalizer::normalize($emplacement);
 
-        if ($codeArticle === '') {
+        if (CodeArticleNormalizer::normalize($codeArticle) === '') {
             throw new ArticleQrPayloadParseException(
                 'Le Code Article avant le separateur "&" est obligatoire.'
             );
         }
 
-        if ($emplacement === '') {
+        if (CodeArticleNormalizer::normalize($emplacement) === '') {
             throw new ArticleQrPayloadParseException(
                 'L emplacement apres le separateur "&" est obligatoire.'
             );
         }
 
+        return self::fromParts($codeArticle, $emplacement);
+    }
+
+    public static function fromParts(string $codeArticle, ?string $emplacement): self
+    {
+        if (str_contains($codeArticle, '&')) {
+            throw new ArticleQrPayloadParseException(
+                'Le Code Article contient le separateur reserve "&" alors qu une colonne Emplacement est deja presente. Utilisez le Code Article sans emplacement dans cette colonne.'
+            );
+        }
+
+        if ($emplacement !== null && str_contains($emplacement, '&')) {
+            throw new ArticleQrPayloadParseException(
+                'L emplacement contient le separateur reserve "&".'
+            );
+        }
+
+        $codeArticle = CodeArticleNormalizer::normalize($codeArticle);
+        $emplacement = CodeArticleNormalizer::normalize($emplacement);
+
+        if ($codeArticle === '') {
+            throw new ArticleQrPayloadParseException(
+                'La valeur Code Article est obligatoire.'
+            );
+        }
+
+        if ($emplacement === '') {
+            $emplacement = null;
+        }
+
         return new self(
-            $codeArticle.'&'.$emplacement,
+            $emplacement === null ? $codeArticle : $codeArticle.'&'.$emplacement,
             $codeArticle,
             $emplacement,
         );

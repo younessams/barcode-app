@@ -12,7 +12,9 @@ final class A4LabelPresetCatalogTest extends TestCase
     {
         $catalog = new A4LabelPresetCatalog;
         $this->assertSame(['38x21_2', '52_5x29_7', '70x37', '70x42_3', '105x37', '105x74', '105x148'], $catalog->ids());
-        $this->assertSame('70x37', $catalog->default()['id']);
+        $this->assertSame('52_5x29_7', $catalog->default()['id']);
+        $this->assertTrue($catalog->get('52_5x29_7')['recommended']);
+        $this->assertFalse($catalog->get('70x37')['recommended']);
     }
 
     public function test_presets_fit_a4_and_have_expected_capacity(): void

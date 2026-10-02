@@ -32,7 +32,7 @@
         .warning { color: #8b3e12; font-size: 12px; margin-top: 10px; }
         .code-types { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
         .code-type { position: relative; } .code-type input { position: absolute; opacity: 0; } .code-type label { margin: 0; padding: 11px; border: 1px solid #b8c2cc; border-radius: 6px; cursor: pointer; } .code-type input:checked + label { border-color: #1769aa; box-shadow: 0 0 0 2px #1769aa22; background: #f1f8fe; } .code-type-title { display: block; } .code-type-help { display: block; font-size: 11px; color: #607080; font-weight: 400; margin-top: 3px; }
-        .qr-preview { display: grid; grid-template-columns: repeat(29, 1fr); gap: 1px; background: #fff; padding: 7%; } .qr-module { aspect-ratio: 1; background: #fff; } .qr-module.on { background: #111; }
+        .qr-preview { display: grid; grid-template-columns: repeat(29, 1fr); gap: 1px; background: #fff; padding: 7%; } .qr-module { aspect-ratio: 1; background: #fff; } .qr-module.on { background: #111; } .qr-emplacement-preview { position: absolute; border: 1px dotted #607080; height: 5px; }
         @media (max-width: 820px) { .app { padding: 16px; } main { grid-template-columns: 1fr; } }
     </style>
 </head>
