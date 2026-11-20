@@ -47,7 +47,9 @@ async function loadHeaders(file) {
 }
 
 function normalizeHeader(value) {
-    return value.replace(/[\s\u00a0]+/g, ' ').trim().toLocaleLowerCase();
+    return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[_.,:/'’\-]+/g, ' ')
+        .replace(/[\s\u00a0]+/g, ' ').trim().toLocaleLowerCase();
 }
 
 function findDefaultHeader(headers) {
@@ -56,8 +58,13 @@ function findDefaultHeader(headers) {
         result[normalized] = (result[normalized] || 0) + 1;
         return result;
     }, {});
-    const codeArticle = headers.find((header) => normalizeHeader(header) === normalizeHeader('Code Article'));
-    if (codeArticle && counts[normalizeHeader(codeArticle)] === 1) return codeArticle;
+    const codeAliases = new Set([
+        'code article', 'codearticle', 'code art', 'code ar', 'code d article',
+        'code produit', 'code product', 'reference article', 'ref article', 'sku', 'stock code',
+    ]);
+    const codeArticle = headers.find((header) => codeAliases.has(normalizeHeader(header))
+        && counts[normalizeHeader(header)] === 1);
+    if (codeArticle) return codeArticle;
     return headers.find((header) => counts[normalizeHeader(header)] === 1) || '';
 }
 

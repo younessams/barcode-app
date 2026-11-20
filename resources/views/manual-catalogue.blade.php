@@ -409,7 +409,7 @@
 
                         <code>Code Article</code>
                         <code>Designation / Désignation</code>
-                        <code>Emplacement</code>
+                        <code>Emplacement / Zone</code>
                     </div>
 
                     <button class="button" type="submit">
