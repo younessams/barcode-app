@@ -41,6 +41,17 @@ jobs:
           cp .env.example .env
           php artisan key:generate --no-interaction
 
+      - name: Setup Node for Laravel tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Build Vite assets
+        run: |
+          npm ci
+          npm run build
+
       - name: Smart Excel regression tests
         run: php artisan test --filter=SmartExcelHeaderDetectionTest
 
