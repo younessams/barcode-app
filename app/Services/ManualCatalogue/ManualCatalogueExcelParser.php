@@ -2,6 +2,7 @@
 
 namespace App\Services\ManualCatalogue;
 
+use App\Services\Excel\SmartExcelHeaderDetector;
 use App\Support\CodeArticleNormalizer;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
@@ -39,35 +40,33 @@ final class ManualCatalogueExcelParser
                 );
             }
 
-            $headers = [];
-
-            for ($column = 1; $column <= $highestColumnIndex; $column++) {
-                $headers[$column] = $this->cellString(
-                    $sheet->getCell([$column, 1])
-                );
-            }
+            $detected = (new SmartExcelHeaderDetector)->detect(
+                $sheet,
+                fn ($cell): string => $this->cellString($cell),
+            );
+            $headers = $detected['headers'];
 
             $codeColumn = $this->detectColumn(
                 $headers,
-                ['code article', 'codearticle'],
+                ['code article', 'codearticle', 'code art', 'code ar', 'code d article', 'code produit', 'code product', 'reference article', 'ref article', 'sku', 'stock code'],
                 'Code Article'
             );
 
             $designationColumn = $this->detectColumn(
                 $headers,
-                ['designation'],
+                ['designation', 'designation article', 'libelle', 'libelle article', 'description', 'description article', 'nom article'],
                 'Designation'
             );
 
             $emplacementColumn = $this->detectColumn(
                 $headers,
-                ['emplacement'],
+                ['emplacement', 'emp', 'zone', 'zone stockage', 'zone de stockage', 'localisation'],
                 'Emplacement'
             );
 
             $items = [];
 
-            for ($row = 2; $row <= $highestRow; $row++) {
+            for ($row = $detected['row'] + 1; $row <= $highestRow; $row++) {
                 $code = CodeArticleNormalizer::normalize(
                     $this->cellString(
                         $sheet->getCell([$codeColumn, $row])
@@ -189,37 +188,7 @@ final class ManualCatalogueExcelParser
 
     private static function normalizeHeader(string $header): string
     {
-        $header = mb_strtolower(trim($header), 'UTF-8');
-
-        $header = strtr($header, [
-            'à' => 'a',
-            'â' => 'a',
-            'ä' => 'a',
-            'á' => 'a',
-            'ã' => 'a',
-            'ç' => 'c',
-            'é' => 'e',
-            'è' => 'e',
-            'ê' => 'e',
-            'ë' => 'e',
-            'í' => 'i',
-            'ì' => 'i',
-            'î' => 'i',
-            'ï' => 'i',
-            'ó' => 'o',
-            'ò' => 'o',
-            'ô' => 'o',
-            'ö' => 'o',
-            'õ' => 'o',
-            'ú' => 'u',
-            'ù' => 'u',
-            'û' => 'u',
-            'ü' => 'u',
-        ]);
-
-        $header = preg_replace('/[\p{Z}\s]+/u', ' ', $header) ?? $header;
-
-        return trim($header);
+        return SmartExcelHeaderDetector::normalize($header);
     }
 
     private function cellString($cell): string

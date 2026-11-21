@@ -2,6 +2,7 @@
 
 namespace App\Services\BarcodeLabels;
 
+use App\Services\Excel\SmartExcelHeaderDetector;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -10,8 +11,6 @@ use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 final class ExcelLabelParser
 {
     public const DEFAULT_COLUMN_NAME = 'Code Article';
-
-    private const EMPLACEMENT_COLUMN_ALIASES = ['emplacement', 'emp'];
 
     /**
      * @return list<BarcodeLabel>
@@ -40,16 +39,17 @@ final class ExcelLabelParser
                 throw new ExcelLabelParseException('Le fichier Excel doit contenir une ligne d entete et au moins une ligne de donnees.');
             }
 
-            $headers = [];
-            for ($column = 1; $column <= $highestColumnIndex; $column++) {
-                $headers[$column] = $this->cellString($sheet->getCell([$column, 1]));
-            }
-
+            $detected = (new SmartExcelHeaderDetector)->detect(
+                $sheet,
+                fn ($cell): string => $this->cellString($cell),
+                $columnName,
+            );
+            $headers = $detected['headers'];
             $codeColumn = $this->detectCodeColumn($headers, $columnName);
             $emplacementColumn = $this->detectEmplacementColumn($headers);
             $labels = [];
 
-            for ($row = 2; $row <= $highestRow; $row++) {
+            for ($row = $detected['row'] + 1; $row <= $highestRow; $row++) {
                 if ($this->rowIsEmpty($sheet, $row, $highestColumnIndex)) {
                     continue;
                 }
@@ -99,16 +99,15 @@ final class ExcelLabelParser
 
         try {
             $sheet = $spreadsheet->getActiveSheet();
-            $highestColumnIndex = Coordinate::columnIndexFromString($sheet->getHighestDataColumn());
-            $headers = [];
-            for ($column = 1; $column <= $highestColumnIndex; $column++) {
-                $header = $this->cellString($sheet->getCell([$column, 1]));
-                if ($header !== '') {
-                    $headers[] = $header;
-                }
-            }
+            $detected = (new SmartExcelHeaderDetector)->detect(
+                $sheet,
+                fn ($cell): string => $this->cellString($cell),
+            );
 
-            return $headers;
+            return array_values(array_filter(
+                $detected['headers'],
+                fn (string $header): bool => $header !== '',
+            ));
         } finally {
             $spreadsheet->disconnectWorksheets();
         }
@@ -120,6 +119,15 @@ final class ExcelLabelParser
     private function detectCodeColumn(array $headers, string $columnName): int
     {
         $columns = $this->matchingColumns($headers, $columnName);
+
+        // The default Code Article may be written Code ar, code_article, SKU, etc.
+        // Explicitly selected other columns are never silently substituted.
+        if ($columns === [] && self::normalizeHeader($columnName) === self::normalizeHeader(self::DEFAULT_COLUMN_NAME)) {
+            $columns = array_values(array_keys(array_filter(
+                $headers,
+                fn (string $header): bool => SmartExcelHeaderDetector::isCodeHeader($header),
+            )));
+        }
 
         if (count($columns) > 1) {
             throw new ExcelLabelParseException('Plusieurs colonnes '.$columnName.' ont ete detectees. Conservez une seule colonne.');
@@ -144,16 +152,12 @@ final class ExcelLabelParser
     {
         $columns = array_values(array_keys(array_filter(
             $headers,
-            fn (string $header): bool => in_array(
-                self::normalizeHeader($header),
-                self::EMPLACEMENT_COLUMN_ALIASES,
-                true,
-            ),
+            fn (string $header): bool => SmartExcelHeaderDetector::isEmplacementHeader($header),
         )));
 
         if (count($columns) > 1) {
             throw new ExcelLabelParseException(
-                'Plusieurs colonnes d emplacement ont ete detectees. Conservez une seule colonne Emplacement ou Emp.'
+                'Plusieurs colonnes d emplacement ont ete detectees (Emplacement / Zone / Emp). Choisissez une seule colonne.'
             );
         }
 

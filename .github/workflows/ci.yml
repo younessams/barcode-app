@@ -1,0 +1,82 @@
+name: Barcode App CI
+
+on:
+  push:
+    branches:
+      - main
+      - fix/smart-excel-detection
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: barcode-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  php-tests:
+    name: PHP / Laravel tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, dom, fileinfo, gd, zip, sqlite3, pdo_sqlite, xml, curl
+          coverage: none
+
+      - name: Install PHP dependencies (including dev tools)
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Prepare Laravel test environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate --no-interaction
+
+      - name: Setup Node for Laravel tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Build Vite assets
+        run: |
+          npm ci
+          npm run build
+
+      - name: Smart Excel regression tests
+        run: php artisan test --filter=SmartExcelHeaderDetectionTest
+
+      - name: Full Laravel test suite
+        run: php artisan test
+
+  frontend:
+    name: JavaScript tests and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Inventory JavaScript tests
+        run: npm run test:inventory
+
+      - name: Build production assets
+        run: npm run build

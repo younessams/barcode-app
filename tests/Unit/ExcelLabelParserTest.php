@@ -69,16 +69,14 @@ final class ExcelLabelParserTest extends TestCase
         ]), 'SKU');
     }
 
-    public function test_other_code_like_headers_are_not_guessed(): void
+    public function test_known_code_article_alias_is_supported(): void
     {
-        $this->expectException(ExcelLabelParseException::class);
-        $this->expectExceptionMessage('Colonne "Code Article" introuvable');
-        $this->expectExceptionMessage('Colonnes disponibles : code_article.');
-
-        (new ExcelLabelParser)->parse($this->createWorkbook([
+        $labels = (new ExcelLabelParser)->parse($this->createWorkbook([
             ['code_article'],
             ['6DROGUER-050'],
         ]), 'Code Article');
+
+        $this->assertSame('6DROGUER-050', $labels[0]->code);
     }
 
     public function test_column_name_is_required(): void
